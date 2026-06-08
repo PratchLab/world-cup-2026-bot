@@ -174,11 +174,16 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
     if (text.startsWith('/next')) {
       try {
         const matches = await getAllMatchesFromSheet();
-        if (matches.length === 0) {
+        const upcomingMatches = matches
+            .filter(m => new Date(m.startTime) > new Date() && m.status !== 'FT')
+            .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+            .slice(0, 5);
+
+        if (upcomingMatches.length === 0) {
           await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'ชิลๆ ไปก่อนพวก ไม่มีแมตช์เตะใน 24 ชม. นี้เลยว่ะ ไปเตะบอลพลาสติกหน้าปากซอยพลางๆ ก่อนนะ' }] });
           continue;
         }
-        const flexMessage = generateMatchesCarousel(matches);
+        const flexMessage = generateMatchesCarousel(upcomingMatches);
         const guideText = { type: 'text', text: '👆 กดปุ่ม "คัดลอกคำสั่งทายผล" ใต้คู่ที่อยากทาย แล้วเอามาวางในช่องแชท\nจากนั้นพิมพ์สกอร์กับผล (W/D/L) ต่อท้ายแล้วกดส่งได้เลยครับ!\n\nตัวอย่าง: /guess 9001 2-1 W' };
         await client.replyMessage({ replyToken: event.replyToken, messages: [flexMessage, guideText] });
       } catch (err) {
@@ -346,8 +351,11 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       if (allFixturesCache.length === 0) await getAllMatchesFromSheet();
       const matches = allFixturesCache;
       
-      // Get next 5 upcoming matches
-      const upcoming = matches.filter(m => m.status === 'NS').slice(0, 5);
+      // Get next 5 upcoming matches chronologically
+      const upcoming = matches
+        .filter(m => new Date(m.startTime) > new Date() && m.status !== 'FT')
+        .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+        .slice(0, 5);
       let replyText = `📅 โปรแกรมการแข่งขันที่กำลังจะมาถึง:\n\n`;
       if (upcoming.length === 0) {
         replyText += `ไม่มีแมตช์เตะแล้วครับ!`;
