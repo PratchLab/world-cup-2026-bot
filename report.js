@@ -80,9 +80,9 @@ ${predLine}
  */
 function generateMatchesCarousel(matches) {
   const bubbles = matches.slice(0, 12).map(m => {
-    // Format to HH:mm in Asia/Bangkok
+    // Format to Date and Time in Asia/Bangkok
     const d = new Date(m.startTime);
-    const timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
+    const timeStr = d.toLocaleDateString('th-TH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
     
     return {
       type: "bubble",
