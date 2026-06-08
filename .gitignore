@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.log
+google-credentials.json
+scratch_*.js
+test_*.js
+get_*.js
+fix*.js
