@@ -222,7 +222,20 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 
       try {
         let displayName = 'คุณลูกค้า';
-        try { const profile = await client.getProfile(userId); displayName = profile.displayName; } catch (e) {}
+        try {
+          if (event.source.type === 'group') {
+            const profile = await client.getGroupMemberProfile(event.source.groupId, userId);
+            displayName = profile.displayName;
+          } else if (event.source.type === 'room') {
+            const profile = await client.getRoomMemberProfile(event.source.roomId, userId);
+            displayName = profile.displayName;
+          } else {
+            const profile = await client.getProfile(userId);
+            displayName = profile.displayName;
+          }
+        } catch (e) {
+          console.error("Profile fetch error:", e.message);
+        }
         await storePrediction(groupId, userId, displayName, matchId, `${pred.home}-${pred.away}`, pred.outcome);
         
         const hFlag = getFlag(matchInfo.homeTeam);
