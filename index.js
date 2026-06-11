@@ -125,6 +125,30 @@ async function storePrediction(groupId, userId, displayName, matchId, prediction
   });
 }
 
+async function updateMatchResult(matchId, status, homeScore, awayScore) {
+  const sheets = await getSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A:H' });
+  const rows = res.data.values || [];
+  
+  const rowIndex = rows.findIndex(r => r[0] === String(matchId));
+  if (rowIndex === -1) return;
+  
+  const rowNumber = rowIndex + 2; // +1 for 1-based index, +1 for header
+  const range = `Matches!F${rowNumber}:H${rowNumber}`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range,
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[status, homeScore, awayScore]]
+    }
+  });
+  
+  // Refresh cache
+  await getAllMatchesFromSheet();
+}
+
 function parsePrediction(text) {
   const parts = text.trim().split(/\s+/);
   if (parts.length !== 2) return null;
@@ -546,11 +570,18 @@ app.get('/api/upcoming-matches', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-if (process.env.NODE_ENV === 'test') {
-  module.exports = app;
-} else {
-  app.listen(PORT, () => {
-    console.log(`Bot service listening on port ${PORT}`);
+const port = process.env.PORT || 3000;
+app.listen(port, async () => {
+  console.log(`Bot service listening on port ${port}`);
+  await getAllMatchesFromSheet(); // initial fetch
+
+  // Start scheduler
+  const { startScheduler } = require('./scheduler');
+  startScheduler(client, {
+    getAllMatchesFromSheet,
+    getLatestPredictions,
+    calculatePoints,
+    updateMatchResult,
+    getAllFixturesCache: () => allFixturesCache
   });
-}
+});
