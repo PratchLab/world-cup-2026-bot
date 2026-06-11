@@ -1,46 +1,6 @@
 const cron = require('node-cron');
-const { getLineups, getEvents, getStatistics, getFixture } = require('./api-football');
+const { getLineups, getEvents, getStatistics, getFixture, fetchAllApiFixtures, getApiFixtureForMatch } = require('./api-football');
 const { getFlag } = require('./report');
-const axios = require('axios');
-
-let apiFixturesCache = [];
-
-async function fetchAllApiFixtures() {
-  try {
-    const apiHost = process.env.API_FOOTBALL_HOST || 'v3.football.api-sports.io';
-    const res = await axios.get(`https://${apiHost}/fixtures`, {
-      params: { league: 1, season: 2026 },
-      headers: { 'x-apisports-key': process.env.API_FOOTBALL_KEY }
-    });
-    apiFixturesCache = res.data.response || [];
-    console.log(`[API] Fetched ${apiFixturesCache.length} fixtures from API-Football.`);
-  } catch (err) {
-    console.error("[API] Error fetching API fixtures:", err.message);
-  }
-}
-
-// Map Google Sheet match to API-Football fixture
-function getApiFixtureForMatch(sheetMatch) {
-  return apiFixturesCache.find(apiMatch => {
-    const apiDate = new Date(apiMatch.fixture.date);
-    const sheetDate = new Date(sheetMatch.startTime);
-    // Same day and roughly same time (within 12 hours) and one of the team names match (fuzzy)
-    const timeDiff = Math.abs(apiDate - sheetDate);
-    if (timeDiff > 12 * 60 * 60 * 1000) return false;
-    
-    const apiHome = apiMatch.teams.home.name.toLowerCase();
-    const apiAway = apiMatch.teams.away.name.toLowerCase();
-    const sheetHome = sheetMatch.homeTeam.toLowerCase();
-    const sheetAway = sheetMatch.awayTeam.toLowerCase();
-    
-    // Simple substring match to handle "USA" vs "United States" or "South Korea" vs "Korea Republic"
-    if ((apiHome.includes(sheetHome) || sheetHome.includes(apiHome) || sheetHome === 'usa' && apiHome.includes('united states')) &&
-        (apiAway.includes(sheetAway) || sheetAway.includes(apiAway) || sheetAway === 'usa' && apiAway.includes('united states'))) {
-      return true;
-    }
-    return false;
-  });
-}
 
 function startScheduler(client, sheetsFunctions) {
   const { getAllMatchesFromSheet, getLatestPredictions, calculatePoints, updateMatchResult, getAllFixturesCache } = sheetsFunctions;

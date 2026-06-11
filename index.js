@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
 const {google} = require('googleapis');
-const { generateMatchesCarousel, getFlag } = require('./report');
+const { generateMatchesCarousel, getFlag, generateRankingsMessage } = require('./report');
+const { getLineups, getPredictions, getApiFixtureForMatch } = require('./api-football');
 const app = express();
 
 let matchesCache = []; // Upcoming matches for carousel
@@ -171,10 +172,12 @@ const helpMsg = `⚽️ สวัสดี! เราคือ "ว.ค. 26" บ
 3️⃣ /group [A-L] - ดูตารางคะแนนและแมตช์กลุ่ม เช่น /group A
 4️⃣ /stage [รอบ] - ดูโปรแกรมรอบน็อคเอาท์ (32, 16, 8, 4, 3, final)
 5️⃣ /matchid - ดูคู่การแข่งขันทั้งหมดและ ID แมตช์
-6️⃣ /mypredict - ดูประวัติทายผลของคุณเองและคะแนน
-7️⃣ /allpredict [ID] - ดูผลทายของทุกคนในแมตช์นั้น
-8️⃣ /rank - ดูตารางคะแนนรวม แข่งความเป็นเซียน!
-9️⃣ /setup - ดึง Group ID ของกลุ่มนี้เพื่อรับแจ้งเตือนอัตโนมัติ
+6️⃣ /lineup [ID] - ดูรายชื่อ 11 ตัวจริงของแมตช์นั้น
+7️⃣ /odds [ID] - ดูทรรศนะและเปอร์เซ็นต์ความน่าจะเป็น
+8️⃣ /mypredict - ดูประวัติทายผลของคุณเองและคะแนน
+9️⃣ /allpredict [ID] - ดูผลทายของทุกคนในแมตช์นั้น
+🔟 /rank - ดูตารางคะแนนรวม แข่งความเป็นเซียน!
+*️⃣ /setup - ดึง Group ID ของกลุ่มนี้เพื่อรับแจ้งเตือนอัตโนมัติ
 
 ⚠️ กติกาสำคัญ:
 - "ทายผลกี่ครั้งก็ได้ จนกว่าบอลจะเริ่มเตะ!" ระบบจะนับผลการทายครั้งสุดท้ายก่อนบอลเตะ
@@ -203,6 +206,78 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       } else {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⚠️ คำสั่งนี้ใช้ได้เฉพาะในกลุ่ม (Group Chat) เท่านั้นครับ' }] });
       }
+      continue;
+    }
+
+    // --- 0.1 /lineup [ID] ---
+    if (text.startsWith('/lineup')) {
+      const tokens = text.split(/\s+/);
+      if (tokens.length < 2) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⚠️ โปรดระบุ ID แมตช์ (เช่น /lineup 1)' }] });
+        continue;
+      }
+      const matchId = tokens[1];
+      if (allFixturesCache.length === 0) await getAllMatchesFromSheet();
+      const match = allFixturesCache.find(m => String(m.matchId) === String(matchId));
+      if (!match) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ไม่พบข้อมูลแมตช์ ID: ${matchId}` }] });
+        continue;
+      }
+      const apiFixture = getApiFixtureForMatch(match);
+      if (!apiFixture) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูล 11 ตัวจริงสำหรับคู่นี้ครับ` }] });
+        continue;
+      }
+      const lineups = await getLineups(apiFixture.fixture.id);
+      if (!lineups || lineups.length === 0) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูล 11 ตัวจริงจาก FIFA สำหรับคู่นี้ครับ` }] });
+        continue;
+      }
+      let replyText = `📋 รายชื่อ 11 ตัวจริง\n${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
+      lineups.forEach(teamData => {
+          const formation = teamData.formation || 'Unknown';
+          const xi = teamData.startXI.map(p => p.player.name).join(', ');
+          replyText += `🛡️ ${teamData.team.name} (${formation}):\n${xi}\n\n`;
+      });
+      await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: replyText.trim() }] });
+      continue;
+    }
+
+    // --- 0.2 /odds [ID] หรือ /predict [ID] ---
+    if (text.startsWith('/odds') || text.startsWith('/predict ')) {
+      const tokens = text.split(/\s+/);
+      if (tokens.length < 2) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⚠️ โปรดระบุ ID แมตช์ (เช่น /odds 1)' }] });
+        continue;
+      }
+      const matchId = tokens[1];
+      if (allFixturesCache.length === 0) await getAllMatchesFromSheet();
+      const match = allFixturesCache.find(m => String(m.matchId) === String(matchId));
+      if (!match) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ไม่พบข้อมูลแมตช์ ID: ${matchId}` }] });
+        continue;
+      }
+      const apiFixture = getApiFixtureForMatch(match);
+      if (!apiFixture) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูลทรรศนะสำหรับคู่นี้ครับ` }] });
+        continue;
+      }
+      const preds = await getPredictions(apiFixture.fixture.id);
+      if (!preds || !preds.predictions) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีบทวิเคราะห์สำหรับคู่นี้ครับ` }] });
+        continue;
+      }
+      const { percent, advice, winner } = preds.predictions;
+      let replyText = `🔮 ทรรศนะ & ความน่าจะเป็น\n${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
+      replyText += `📊 โอกาสชนะ:\n`;
+      replyText += `- ${match.homeTeam}: ${percent.home}\n`;
+      replyText += `- เสมอ: ${percent.draw}\n`;
+      replyText += `- ${match.awayTeam}: ${percent.away}\n\n`;
+      replyText += `💡 คำแนะนำ: ${advice}\n`;
+      if (winner && winner.name) {
+          replyText += `🏆 ทีมเต็ง: ${winner.name}\n`;
+      }
+      await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: replyText }] });
       continue;
     }
 
