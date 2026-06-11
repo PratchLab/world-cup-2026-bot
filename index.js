@@ -431,7 +431,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 
     // --- 5. /rank (Leaderboard) ---
     if (text.startsWith('/rank') || text.startsWith('/leaderboard')) {
-      if (allFixturesCache.length === 0) await getAllMatchesFromSheet();
+      await getAllMatchesFromSheet();
       const predictions = await getLatestPredictions();
       
       // Calculate scores for everyone

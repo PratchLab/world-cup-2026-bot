@@ -85,6 +85,7 @@ function startScheduler(client, sheetsFunctions) {
             
             // 1. Update Sheet
             await updateMatchResult(match.matchId, 'FT', homeScore, awayScore);
+            await getAllMatchesFromSheet();
             
             if (!LINE_GROUP_ID) continue;
 
