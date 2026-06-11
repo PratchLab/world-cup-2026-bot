@@ -7,7 +7,8 @@ let apiFixturesCache = [];
 
 async function fetchAllApiFixtures() {
   try {
-    const res = await axios.get(`https://${process.env.API_FOOTBALL_HOST}/fixtures`, {
+    const apiHost = process.env.API_FOOTBALL_HOST || 'v3.football.api-sports.io';
+    const res = await axios.get(`https://${apiHost}/fixtures`, {
       params: { league: 1, season: 2026 },
       headers: { 'x-apisports-key': process.env.API_FOOTBALL_KEY }
     });

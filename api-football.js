@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 const API_KEY = process.env.API_FOOTBALL_KEY;
-const API_HOST = process.env.API_FOOTBALL_HOST;
+const API_HOST = process.env.API_FOOTBALL_HOST || 'v3.football.api-sports.io';
 
 const api = axios.create({
   baseURL: `https://${API_HOST}`,
