@@ -61,7 +61,8 @@ async function getAllMatchesFromSheet() {
     stage: r[4],
     status: r[5] || 'NS',
     homeScore: r[6] ? parseInt(r[6]) : null,
-    awayScore: r[7] ? parseInt(r[7]) : null
+    awayScore: r[7] ? parseInt(r[7]) : null,
+    apiFixtureId: r[8] ? parseInt(r[8]) : null
   }));
   
   allFixturesCache = matches;
@@ -223,12 +224,11 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ไม่พบข้อมูลแมตช์ ID: ${matchId}` }] });
         continue;
       }
-      const apiFixture = getApiFixtureForMatch(match);
-      if (!apiFixture) {
-        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูล 11 ตัวจริงสำหรับคู่นี้ครับ` }] });
+      if (!match.apiFixtureId) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูล 11 ตัวจริงสำหรับคู่นี้ครับ (รอการแข่งขันรอบนี้)` }] });
         continue;
       }
-      const lineups = await getLineups(apiFixture.fixture.id);
+      const lineups = await getLineups(match.apiFixtureId);
       if (!lineups || lineups.length === 0) {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูล 11 ตัวจริงจาก FIFA สำหรับคู่นี้ครับ` }] });
         continue;
@@ -257,12 +257,11 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ไม่พบข้อมูลแมตช์ ID: ${matchId}` }] });
         continue;
       }
-      const apiFixture = getApiFixtureForMatch(match);
-      if (!apiFixture) {
-        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูลทรรศนะสำหรับคู่นี้ครับ` }] });
+      if (!match.apiFixtureId) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูลทรรศนะสำหรับคู่นี้ครับ (รอการแข่งขันรอบนี้)` }] });
         continue;
       }
-      const preds = await getPredictions(apiFixture.fixture.id);
+      const preds = await getPredictions(match.apiFixtureId);
       if (!preds || !preds.predictions) {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีบทวิเคราะห์สำหรับคู่นี้ครับ` }] });
         continue;

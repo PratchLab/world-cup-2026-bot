@@ -25,13 +25,12 @@ function startScheduler(client, sheetsFunctions) {
       // Trigger exactly 30 minutes before kick-off
       if (diffMins === 30) {
         console.log(`[Scheduler] 30 mins to kick-off for ${match.matchId}. Fetching lineups...`);
-        const apiFixture = getApiFixtureForMatch(match);
-        if (!apiFixture) {
-            console.log(`[Scheduler] API Fixture not found for ${match.homeTeam} vs ${match.awayTeam}`);
+        if (!match.apiFixtureId) {
+            console.log(`[Scheduler] No API Fixture ID for ${match.homeTeam} vs ${match.awayTeam}`);
             continue;
         }
 
-        const lineups = await getLineups(apiFixture.fixture.id);
+        const lineups = await getLineups(match.apiFixtureId);
         
         let replyText = `🚨 อีก 30 นาทีบอลจะเตะแล้ว! 🚨\nเตรียมตัวรับชม: ${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
         
@@ -68,11 +67,11 @@ function startScheduler(client, sheetsFunctions) {
     
     if (activeMatches.length === 0) return;
 
-    // Refresh API fixtures to get latest status
-    await fetchAllApiFixtures();
-
     for (const match of activeMatches) {
-        const apiFixture = getApiFixtureForMatch(match);
+        if (!match.apiFixtureId) continue;
+
+        // Fetch latest status for this specific match
+        const apiFixture = await getFixture(match.apiFixtureId);
         if (!apiFixture) continue;
 
         const apiStatus = apiFixture.fixture.status.short;
