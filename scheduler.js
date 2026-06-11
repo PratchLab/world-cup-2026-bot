@@ -47,7 +47,7 @@ function startScheduler(client, sheetsFunctions) {
         replyText += `⏳ ใครยังไม่ทายผล รีบพิมพ์ /guess ตอนนี้เลย! หมดเวลาทายผลทันทีที่เสียงนกหวีดเป่าเริ่มเกม!`;
         
         try {
-          await client.pushMessage(LINE_GROUP_ID, { type: 'text', text: replyText });
+          await client.pushMessage({ to: LINE_GROUP_ID, messages: [{ type: 'text', text: replyText }] });
         } catch (e) {
           console.error("Push message error:", e.response ? e.response.data : e.message);
         }
@@ -131,7 +131,7 @@ function startScheduler(client, sheetsFunctions) {
             replyText += `\nพิมพ์ /rank เพื่อดูตารางคะแนนรวมทั้งหมดครับ! 👑`;
 
             try {
-              await client.pushMessage(LINE_GROUP_ID, { type: 'text', text: replyText });
+              await client.pushMessage({ to: LINE_GROUP_ID, messages: [{ type: 'text', text: replyText }] });
             } catch (e) {
               console.error("Push message error:", e.response ? e.response.data : e.message);
             }
