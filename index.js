@@ -50,7 +50,7 @@ async function getSheetsClient() {
 async function getAllMatchesFromSheet() {
   const sheets = await getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A2:H' });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A2:I' });
   const rows = res.data.values || [];
   
   const matches = rows.map(r => ({
