@@ -214,11 +214,11 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         continue;
       }
 
-      // Temporarily disabled for testing so user can guess match 9003
-      // if (matchInfo.status !== 'NS') {
-      //   await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `❌ หมดเวลาทายผลแล้วครับ! แมตช์นี้เริ่มแข่งไปแล้ว (สถานะ: ${matchInfo.status})`}] });
-      //   continue;
-      // }
+      // Check if match has started or status is no longer Not Started
+      if (matchInfo.status !== 'NS' || new Date() > new Date(matchInfo.startTime)) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `❌ หมดเวลาทายผลแล้วครับ! แมตช์นี้เริ่มแข่งไปแล้ว`}] });
+        continue;
+      }
 
       try {
         let displayName = 'คุณลูกค้า';
