@@ -136,7 +136,7 @@ async function updateMatchResult(matchId, status, homeScore, awayScore) {
   const rowIndex = rows.findIndex(r => r[0] === String(matchId));
   if (rowIndex === -1) return;
   
-  const rowNumber = rowIndex + 2; // +1 for 1-based index, +1 for header
+  const rowNumber = rowIndex + 1; // +1 for 1-based index (header is row 1)
   const range = `Matches!F${rowNumber}:H${rowNumber}`;
   await sheets.spreadsheets.values.update({
     spreadsheetId,
