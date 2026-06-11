@@ -150,6 +150,7 @@ const helpMsg = `⚽️ สวัสดี! เราคือ "ว.ค. 26" บ
 6️⃣ /mypredict - ดูประวัติทายผลของคุณเองและคะแนน
 7️⃣ /allpredict [ID] - ดูผลทายของทุกคนในแมตช์นั้น
 8️⃣ /rank - ดูตารางคะแนนรวม แข่งความเป็นเซียน!
+9️⃣ /setup - ดึง Group ID ของกลุ่มนี้เพื่อรับแจ้งเตือนอัตโนมัติ
 
 ⚠️ กติกาสำคัญ:
 - "ทายผลกี่ครั้งก็ได้ จนกว่าบอลจะเริ่มเตะ!" ระบบจะนับผลการทายครั้งสุดท้ายก่อนบอลเตะ
@@ -169,6 +170,17 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
     
     // Ignore normal conversation
     if (!text.startsWith('/') && textLower !== '?' && textLower !== 'help') continue;
+
+    // --- 0. /setup ---
+    if (text.startsWith('/setup')) {
+      if (event.source.type === 'group') {
+        const replyText = `✅ บอทอยู่ในกลุ่มนี้เรียบร้อยแล้ว!\n\n📋 Group ID ของกลุ่มนี้คือ:\n${event.source.groupId}\n\n👉 โปรดนำค่านี้ไปใส่ใน Environment Variables ของ Render ในชื่อ LINE_GROUP_ID ครับ`;
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: replyText }] });
+      } else {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⚠️ คำสั่งนี้ใช้ได้เฉพาะในกลุ่ม (Group Chat) เท่านั้นครับ' }] });
+      }
+      continue;
+    }
 
     // --- 1. /next ---
     if (text.startsWith('/next')) {
