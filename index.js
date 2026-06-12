@@ -87,7 +87,7 @@ async function getLatestPredictions() {
   for (const row of rows) {
     if (row.length < 7) continue;
     const [ts, groupId, userId, displayName, matchId, prediction, outcome] = row;
-    const key = `${userId}_${matchId}`;
+    const key = `${groupId}_${userId}_${matchId}`;
     if (!map[key] || new Date(ts) > new Date(map[key].ts)) {
       map[key] = { ts, groupId, userId, displayName, matchId, prediction, outcome };
     }
@@ -432,12 +432,14 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
     // --- 5. /rank (Leaderboard) ---
     if (text.startsWith('/rank') || text.startsWith('/leaderboard')) {
       await getAllMatchesFromSheet();
-      const predictions = await getLatestPredictions();
+      const groupId = event.source.groupId || event.source.roomId || event.source.userId;
+      const allPredictions = await getLatestPredictions();
+      const predictions = allPredictions.filter(p => p.groupId === groupId);
       
-      // Calculate scores for everyone
+      // Calculate scores for everyone in this group
       const scores = {}; // userId -> { displayName, points }
       predictions.forEach(p => {
-        const matchInfo = allFixturesCache.find(m => m.matchId === p.matchId);
+        const matchInfo = allFixturesCache.find(m => String(m.matchId) === String(p.matchId));
         if (matchInfo && matchInfo.status === 'FT') {
           const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
           if (!scores[p.userId]) scores[p.userId] = { displayName: p.displayName, points: 0 };

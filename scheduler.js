@@ -10,8 +10,9 @@ function startScheduler(client, sheetsFunctions) {
 
   // 1. Pre-Match Cron: Runs every minute
   cron.schedule('* * * * *', async () => {
-    const LINE_GROUP_ID = process.env.LINE_GROUP_ID;
-    if (!LINE_GROUP_ID) return;
+    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
+    const groupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
+    if (groupIds.length === 0) return;
 
     const matches = getAllFixturesCache();
     const now = new Date();
@@ -47,7 +48,9 @@ function startScheduler(client, sheetsFunctions) {
         replyText += `⏳ ใครยังไม่ทายผล รีบพิมพ์ /guess ตอนนี้เลย! หมดเวลาทายผลทันทีที่เสียงนกหวีดเป่าเริ่มเกม!`;
         
         try {
-          await client.pushMessage({ to: LINE_GROUP_ID, messages: [{ type: 'text', text: replyText }] });
+          for (const groupId of groupIds) {
+            await client.pushMessage({ to: groupId, messages: [{ type: 'text', text: replyText }] });
+          }
         } catch (e) {
           console.error("Push message error:", e.response ? e.response.data : e.message);
         }
@@ -57,7 +60,8 @@ function startScheduler(client, sheetsFunctions) {
 
   // 2. Post-Match Polling: Runs every 5 minutes
   cron.schedule('*/5 * * * *', async () => {
-    const LINE_GROUP_ID = process.env.LINE_GROUP_ID;
+    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
+    const groupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
     
     const matches = getAllFixturesCache();
     const now = new Date();
@@ -87,7 +91,7 @@ function startScheduler(client, sheetsFunctions) {
             await updateMatchResult(match.matchId, 'FT', homeScore, awayScore);
             await getAllMatchesFromSheet();
             
-            if (!LINE_GROUP_ID) continue;
+            if (groupIds.length === 0) continue;
 
             // 2. Fetch Events & Stats
             const events = await getEvents(apiFixture.fixture.id);
@@ -112,43 +116,49 @@ function startScheduler(client, sheetsFunctions) {
                 replyText += `📊 ครองบอล: ${homePossession} - ${awayPossession}\n\n`;
             }
 
-            // 3. Calculate Predictions
-            replyText += `--- 🏆 สรุปคะแนนการทายผลคู่นี้ ---\n`;
+            // 3. Calculate Predictions and Send per Group
             const allPreds = await getLatestPredictions();
-            const matchPreds = allPreds.filter(p => String(p.matchId) === String(match.matchId));
             
-            let hasGuesser = false;
-            for (const p of matchPreds) {
-                hasGuesser = true;
-                const pts = calculatePoints(p.prediction, p.outcome, homeScore, awayScore);
-                let resultStr = pts === 3 ? 'ทายถูกเป๊ะ! (3 แต้ม)' : pts === 1 ? 'ทายผลถูก (1 แต้ม)' : 'ทายผิด (0 แต้ม)';
-                replyText += `- คุณ ${p.displayName} 👉 ${resultStr}\n`;
-            }
-            
-            if (!hasGuesser) {
-                replyText += `(ไม่มีใครทายผลคู่นี้เลย)\n`;
-            }
-            
-            replyText += `\nพิมพ์ /rank เพื่อดูตารางคะแนนรวมทั้งหมดครับ! 👑`;
+            for (const groupId of groupIds) {
+                let groupReplyText = replyText + `--- 🏆 สรุปคะแนนการทายผลคู่นี้ ---\n`;
+                const groupPreds = allPreds.filter(p => p.groupId === groupId && String(p.matchId) === String(match.matchId));
+                
+                let hasGuesser = false;
+                for (const p of groupPreds) {
+                    hasGuesser = true;
+                    const pts = calculatePoints(p.prediction, p.outcome, homeScore, awayScore);
+                    let resultStr = pts === 3 ? 'ทายถูกเป๊ะ! (3 แต้ม)' : pts === 1 ? 'ทายผลถูก (1 แต้ม)' : 'ทายผิด (0 แต้ม)';
+                    groupReplyText += `- คุณ ${p.displayName} 👉 ${resultStr}\n`;
+                }
+                
+                if (!hasGuesser) {
+                    groupReplyText += `(ไม่มีใครทายผลคู่นี้เลย)\n`;
+                }
+                
+                groupReplyText += `\nพิมพ์ /rank เพื่อดูตารางคะแนนรวมทั้งหมดครับ! 👑`;
 
-            try {
-              await client.pushMessage({ to: LINE_GROUP_ID, messages: [{ type: 'text', text: replyText }] });
-            } catch (e) {
-              console.error("Push message error:", e.response ? e.response.data : e.message);
+                try {
+                  await client.pushMessage({ to: groupId, messages: [{ type: 'text', text: groupReplyText }] });
+                } catch (e) {
+                  console.error(`Push message error for group ${groupId}:`, e.response ? e.response.data : e.message);
+                }
             }
         }
     }
   });
   // 3. Daily News Summary (08:00 and 18:00 Thailand time -> 01:00 and 11:00 UTC)
   cron.schedule('0 1,11 * * *', async () => {
-    const LINE_GROUP_ID = process.env.LINE_GROUP_ID;
-    if (!LINE_GROUP_ID) return;
+    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
+    const groupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
+    if (groupIds.length === 0) return;
 
     try {
       const { getNewsSummaryMessage } = require('./news');
       const message = await getNewsSummaryMessage();
       if (message) {
-        await client.pushMessage({ to: LINE_GROUP_ID, messages: [{ type: 'text', text: message }] });
+        for (const groupId of groupIds) {
+          await client.pushMessage({ to: groupId, messages: [{ type: 'text', text: message }] });
+        }
       }
     } catch (e) {
       console.error("[Scheduler] Error pushing news summary:", e.message);
