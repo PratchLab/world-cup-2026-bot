@@ -409,8 +409,9 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         continue;
       }
 
+      const groupId = event.source.groupId || event.source.roomId || event.source.userId;
       const predictions = await getLatestPredictions();
-      const matchPreds = predictions.filter(p => p.matchId === matchId);
+      const matchPreds = predictions.filter(p => p.matchId === matchId && p.groupId === groupId);
       
       let replyText = `📊 สรุปการทายผลทั้งหมดสำหรับคู่:\n${getFlag(matchInfo.homeTeam)} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${getFlag(matchInfo.awayTeam)}\n\n`;
       if (matchPreds.length === 0) {
