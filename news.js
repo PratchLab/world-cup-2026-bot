@@ -1,6 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { OpenAI } = require('openai');
 
 async function fetchRecentNews() {
   const url = 'https://news.google.com/rss/search?q=World+Cup+2026&hl=en-US&gl=US&ceid=US:en';
@@ -32,8 +32,8 @@ async function fetchRecentNews() {
 }
 
 async function summarizeNewsWithAI(newsList) {
-  if (!process.env.GEMINI_API_KEY) {
-    console.error('GEMINI_API_KEY is not set');
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('OPENAI_API_KEY is not set');
     return null;
   }
   
@@ -41,8 +41,7 @@ async function summarizeNewsWithAI(newsList) {
     return "ยังไม่มีข่าวอัปเดตใหม่ในรอบ 12 ชั่วโมงนี้ครับ รอติดตามกันต่อนะครับ! ⚽️";
   }
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   
   const newsText = newsList.map((n, i) => `${i+1}. ${n.title}`).join('\n');
   
@@ -56,11 +55,15 @@ ${newsText}
 `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text().trim();
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini", // Using gpt-4o-mini for speed and cost efficiency
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 400,
+    });
+    
+    return response.choices[0].message.content.trim();
   } catch (error) {
-    console.error("Error from Gemini API:", error.message);
+    console.error("Error from OpenAI API:", error.message);
     return null;
   }
 }
