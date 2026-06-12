@@ -16,11 +16,12 @@ async function fetchRecentNews() {
     
     items.each((i, el) => {
       const title = $(el).find('title').text();
+      const link = $(el).find('link').text();
       const pubDateStr = $(el).find('pubDate').text();
       const pubDate = new Date(pubDateStr);
       
       if (pubDate >= twelveHoursAgo) {
-        recentNews.push({ title, pubDate: pubDate.toISOString() });
+        recentNews.push({ title, link, pubDate: pubDate.toISOString() });
       }
     });
     
@@ -43,13 +44,14 @@ async function summarizeNewsWithAI(newsList) {
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   
-  const newsText = newsList.map((n, i) => `${i+1}. ${n.title}`).join('\n');
+  const newsText = newsList.map((n, i) => `${i+1}. ${n.title} (อ่านต่อ: ${n.link})`).join('\n');
   
   const prompt = `
 คุณคือนักข่าวฟุตบอลสายอินดี้ นามปากกา "ว.ค. 26" มีนิสัยกวนๆ ชอบแซะแบบมีสไตล์ 
 จงสรุปข่าวฟุตบอลโลก 2026 ต่อไปนี้ให้เป็นภาษาไทยที่อ่านสนุก กระชับ ความยาวประมาณ 80-100 คำ 
 โดยใช้ Bullet points หรือ Emoji ให้สวยงาม น่าอ่าน 
-*คำเตือน: จงคัดเลือกและสรุปเฉพาะข่าวที่เกี่ยวกับฟุตบอลโลก 2026 (FIFA World Cup 2026) ชายเท่านั้น ข่าวอื่นๆ เช่น คริกเก็ต ฟุตบอลหญิง หรือกีฬาอื่นๆ ให้ตัดทิ้งไปเลย ไม่ต้องพูดถึง*
+*คำเตือน 1: จงคัดเลือกและสรุปเฉพาะข่าวที่เกี่ยวกับฟุตบอลโลก 2026 (FIFA World Cup 2026) ชายเท่านั้น ข่าวอื่นๆ ให้ตัดทิ้งไปเลย*
+*คำเตือน 2: หากพูดถึงข่าวไหน ให้แนบ Link (อ่านต่อ: ...) ของข่าวนั้นๆ ต่อท้ายประโยคด้วยเสมอ โดยเฉพาะถ้าเป็นคลิปไฮไลท์หรือเรื่องสำคัญ*
 
 หัวข้อข่าว:
 ${newsText}
