@@ -2,6 +2,8 @@ const cron = require('node-cron');
 const { getLineups, getEvents, getStatistics, getFixture, fetchAllApiFixtures, getApiFixtureForMatch } = require('./api-football');
 const { getFlag } = require('./report');
 
+const lineupSentCache = new Set();
+const lineupLastChecked = {};
 function startScheduler(client, sheetsFunctions) {
   const { getAllMatchesFromSheet, getLatestPredictions, calculatePoints, updateMatchResult, getAllFixturesCache } = sheetsFunctions;
 
@@ -23,26 +25,44 @@ function startScheduler(client, sheetsFunctions) {
       const diffMs = startTime - now;
       const diffMins = Math.floor(diffMs / 60000);
       
-      // Trigger exactly 30 minutes before kick-off
-      if (diffMins === 30) {
-        console.log(`[Scheduler] 30 mins to kick-off for ${match.matchId}. Fetching lineups...`);
-        if (!match.apiFixtureId) {
-            console.log(`[Scheduler] No API Fixture ID for ${match.homeTeam} vs ${match.awayTeam}`);
-            continue;
-        }
-
-        const lineups = await getLineups(match.apiFixtureId);
+      // A) Poll for Lineups between 60 to 5 mins before kickoff
+      const lastChecked = lineupLastChecked[match.matchId] || 0;
+      if (diffMins <= 60 && diffMins >= 5 && !lineupSentCache.has(match.matchId) && (now.getTime() - lastChecked > 4.5 * 60000)) {
+        lineupLastChecked[match.matchId] = now.getTime();
         
-        let replyText = `🚨 อีก 30 นาทีบอลจะเตะแล้ว! 🚨\nเตรียมตัวรับชม: ${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
-        
-        if (lineups && lineups.length === 2) {
+        if (match.apiFixtureId) {
+          const lineups = await getLineups(match.apiFixtureId);
+          if (lineups && lineups.length === 2) {
+            console.log(`[Scheduler] Lineups found for ${match.matchId} at T-${diffMins} mins.`);
+            
+            let replyText = `📋 มาแล้ว! รายชื่อ 11 ตัวจริง 📋\n${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
+            
             lineups.forEach(teamData => {
                 const formation = teamData.formation || 'Unknown';
                 const xi = teamData.startXI.map(p => p.player.name).join(', ');
-                replyText += `📋 11 ตัวจริง ${teamData.team.name} (${formation}):\n${xi}\n\n`;
+                replyText += `🛡️ ${teamData.team.name} (${formation}):\n${xi}\n\n`;
             });
-        } else {
-            replyText += `(รายชื่อ 11 ตัวจริงกำลังรอการอัปเดตจากฟีฟ่า)\n\n`;
+            
+            try {
+              for (const groupId of groupIds) {
+                await client.pushMessage({ to: groupId, messages: [{ type: 'text', text: replyText }] });
+              }
+              lineupSentCache.add(match.matchId);
+            } catch (e) {
+              console.error(`Push lineup error for match ${match.matchId}:`, e.response ? e.response.data : e.message);
+            }
+          }
+        }
+      }
+
+      // B) 30-minute Reminder
+      if (diffMins === 30) {
+        console.log(`[Scheduler] 30 mins to kick-off for ${match.matchId}. Sending reminder...`);
+        
+        let replyText = `🚨 อีก 30 นาทีบอลจะเตะแล้ว! 🚨\nเตรียมตัวรับชม: ${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
+        
+        if (!lineupSentCache.has(match.matchId)) {
+            replyText += `(รายชื่อ 11 ตัวจริงกำลังรอการอัปเดตจากฟีฟ่า หรืออาจจะเพิ่งประกาศ)\n\n`;
         }
         
         replyText += `⏳ ใครยังไม่ทายผล รีบพิมพ์ /guess ตอนนี้เลย! หมดเวลาทายผลทันทีที่เสียงนกหวีดเป่าเริ่มเกม!`;
@@ -52,7 +72,7 @@ function startScheduler(client, sheetsFunctions) {
             await client.pushMessage({ to: groupId, messages: [{ type: 'text', text: replyText }] });
           }
         } catch (e) {
-          console.error("Push message error:", e.response ? e.response.data : e.message);
+          console.error("Push reminder error:", e.response ? e.response.data : e.message);
         }
       }
     }
