@@ -3,7 +3,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const {google} = require('googleapis');
 const { generateMatchesCarousel, getFlag, generateRankingsMessage } = require('./report');
-const { getLineups, getPredictions, getApiFixtureForMatch } = require('./api-football');
+const { getLineups, getPredictions, getRealOdds, getApiFixtureForMatch } = require('./api-football');
 const app = express();
 
 let matchesCache = []; // Upcoming matches for carousel
@@ -261,21 +261,42 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีข้อมูลทรรศนะสำหรับคู่นี้ครับ (รอการแข่งขันรอบนี้)` }] });
         continue;
       }
-      const preds = await getPredictions(match.apiFixtureId);
-      if (!preds || !preds.predictions) {
-        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีบทวิเคราะห์สำหรับคู่นี้ครับ` }] });
+      const odds = await getRealOdds(match.apiFixtureId);
+      if (!odds) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ ยังไม่มีราคาค่าน้ำสำหรับคู่นี้ครับ` }] });
         continue;
       }
-      const { percent, advice, winner } = preds.predictions;
-      let replyText = `🔮 ทรรศนะ & ความน่าจะเป็น\n${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
-      replyText += `📊 โอกาสชนะ:\n`;
-      replyText += `- ${match.homeTeam}: ${percent.home}\n`;
-      replyText += `- เสมอ: ${percent.draw}\n`;
-      replyText += `- ${match.awayTeam}: ${percent.away}\n\n`;
-      replyText += `💡 คำแนะนำ: ${advice}\n`;
-      if (winner && winner.name) {
-          replyText += `🏆 ทีมเต็ง: ${winner.name}\n`;
+      
+      const homeOddStr = odds.find(o => o.value === 'Home')?.odd;
+      const drawOddStr = odds.find(o => o.value === 'Draw')?.odd;
+      const awayOddStr = odds.find(o => o.value === 'Away')?.odd;
+
+      if (!homeOddStr || !drawOddStr || !awayOddStr) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: `⚠️ รูปแบบค่าน้ำของคู่นี้ไม่สมบูรณ์ครับ` }] });
+        continue;
       }
+
+      const homeOdd = parseFloat(homeOddStr);
+      const drawOdd = parseFloat(drawOddStr);
+      const awayOdd = parseFloat(awayOddStr);
+
+      const homeProbRaw = 1 / homeOdd;
+      const drawProbRaw = 1 / drawOdd;
+      const awayProbRaw = 1 / awayOdd;
+      
+      const totalProb = homeProbRaw + drawProbRaw + awayProbRaw;
+      
+      const homePct = Math.round((homeProbRaw / totalProb) * 100);
+      const drawPct = Math.round((drawProbRaw / totalProb) * 100);
+      const awayPct = Math.round((awayProbRaw / totalProb) * 100);
+
+      let replyText = `🔮 โอกาสชนะอ้างอิงจากค่าน้ำจริง (Real Odds)\n${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
+      replyText += `📊 ความน่าจะเป็น:\n`;
+      replyText += `- ${match.homeTeam}: ${homePct}%\n`;
+      replyText += `- เสมอ: ${drawPct}%\n`;
+      replyText += `- ${match.awayTeam}: ${awayPct}%\n\n`;
+      replyText += `(ข้อมูลค่าน้ำ: Home ${homeOddStr}, Draw ${drawOddStr}, Away ${awayOddStr})\n`;
+      
       await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: replyText }] });
       continue;
     }

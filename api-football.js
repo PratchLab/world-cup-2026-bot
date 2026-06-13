@@ -66,16 +66,40 @@ async function getFixture(fixtureId) {
   }
 }
 
-/**
- * Fetch predictions and odds for a fixture
- * @param {number} fixtureId 
- */
 async function getPredictions(fixtureId) {
   try {
     const res = await api.get('/predictions', { params: { fixture: fixtureId } });
     return res.data.response[0];
   } catch (err) {
     console.error(`Error fetching predictions for fixture ${fixtureId}:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Fetch real betting odds for a fixture (e.g. from Bet365)
+ * @param {number} fixtureId 
+ */
+async function getRealOdds(fixtureId) {
+  try {
+    // Try bookmaker 8 (Bet365) first
+    let res = await api.get('/odds', { params: { fixture: fixtureId, bookmaker: 8 } });
+    if (!res.data.response || res.data.response.length === 0) {
+        // Fallback to any bookmaker
+        res = await api.get('/odds', { params: { fixture: fixtureId } });
+    }
+    
+    if (res.data.response && res.data.response.length > 0) {
+        const bookmakers = res.data.response[0].bookmakers;
+        if (bookmakers && bookmakers.length > 0) {
+            const bets = bookmakers[0].bets;
+            const matchWinner = bets.find(b => b.name === 'Match Winner' || b.id === 1);
+            if (matchWinner) return matchWinner.values;
+        }
+    }
+    return null;
+  } catch (err) {
+    console.error(`Error fetching real odds for fixture ${fixtureId}:`, err.message);
     return null;
   }
 }
@@ -119,6 +143,7 @@ module.exports = {
   getStatistics,
   getFixture,
   getPredictions,
+  getRealOdds,
   fetchAllApiFixtures,
   getApiFixtureForMatch
 };
