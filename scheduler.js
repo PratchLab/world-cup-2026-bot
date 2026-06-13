@@ -4,6 +4,7 @@ const { getFlag } = require('./report');
 
 const lineupSentCache = new Set();
 const lineupLastChecked = {};
+const reminderSentCache = new Set();
 function startScheduler(client, sheetsFunctions) {
   const { getAllMatchesFromSheet, getLatestPredictions, calculatePoints, updateMatchResult, getAllFixturesCache } = sheetsFunctions;
 
@@ -25,9 +26,9 @@ function startScheduler(client, sheetsFunctions) {
       const diffMs = startTime - now;
       const diffMins = Math.floor(diffMs / 60000);
       
-      // A) Poll for Lineups between 60 to 5 mins before kickoff
+      // A) Poll for Lineups between 60 to 0 mins before kickoff
       const lastChecked = lineupLastChecked[match.matchId] || 0;
-      if (diffMins <= 60 && diffMins >= 5 && !lineupSentCache.has(match.matchId) && (now.getTime() - lastChecked > 4.5 * 60000)) {
+      if (diffMins <= 60 && diffMins > 0 && !lineupSentCache.has(match.matchId) && (now.getTime() - lastChecked > 4.5 * 60000)) {
         lineupLastChecked[match.matchId] = now.getTime();
         
         if (match.apiFixtureId) {
@@ -39,8 +40,10 @@ function startScheduler(client, sheetsFunctions) {
             
             lineups.forEach(teamData => {
                 const formation = teamData.formation || 'Unknown';
-                const xi = teamData.startXI.map(p => p.player.name).join(', ');
-                replyText += `🛡️ ${teamData.team.name} (${formation}):\n${xi}\n\n`;
+                const xi = teamData.startXI && Array.isArray(teamData.startXI) 
+                    ? teamData.startXI.map(p => p.player?.name).filter(Boolean).join(', ')
+                    : 'ยังไม่ระบุผู้เล่น';
+                replyText += `🛡️ ${teamData.team?.name || 'Unknown'} (${formation}):\n${xi}\n\n`;
             });
             
             try {
@@ -55,11 +58,12 @@ function startScheduler(client, sheetsFunctions) {
         }
       }
 
-      // B) 30-minute Reminder
-      if (diffMins === 30) {
-        console.log(`[Scheduler] 30 mins to kick-off for ${match.matchId}. Sending reminder...`);
+      // B) 30-minute Reminder (Resilient math fix)
+      if (diffMins <= 30 && diffMins > 0 && !reminderSentCache.has(match.matchId)) {
+        console.log(`[Scheduler] Sending reminder for ${match.matchId} at T-${diffMins} mins.`);
+        reminderSentCache.add(match.matchId);
         
-        let replyText = `🚨 อีก 30 นาทีบอลจะเตะแล้ว! 🚨\nเตรียมตัวรับชม: ${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
+        let replyText = `🚨 อีก ${diffMins} นาทีบอลจะเตะแล้ว! 🚨\nเตรียมตัวรับชม: ${getFlag(match.homeTeam)} ${match.homeTeam} vs ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
         
         if (!lineupSentCache.has(match.matchId)) {
             replyText += `(รายชื่อ 11 ตัวจริงกำลังรอการอัปเดตจากฟีฟ่า หรืออาจจะเพิ่งประกาศ)\n\n`;
@@ -113,26 +117,36 @@ function startScheduler(client, sheetsFunctions) {
             
             if (groupIds.length === 0) continue;
 
-            // 2. Fetch Events & Stats
-            const events = await getEvents(apiFixture.fixture.id);
-            const stats = await getStatistics(apiFixture.fixture.id);
+            // 2. Fetch Events & Stats safely
+            let events = [];
+            let stats = [];
+            try {
+                events = await getEvents(apiFixture.fixture.id) || [];
+                stats = await getStatistics(apiFixture.fixture.id) || [];
+            } catch (err) {
+                console.error(`Error fetching post-match data for ${match.matchId}:`, err);
+            }
             
             let replyText = `🏁 จบการแข่งขัน! 🏁\n${getFlag(match.homeTeam)} ${match.homeTeam} ${homeScore} - ${awayScore} ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
             
             // Goals
-            const goalEvents = events.filter(e => e.type === 'Goal');
-            if (goalEvents.length > 0) {
-                replyText += `⚽️ ผู้ทำประตู:\n`;
-                goalEvents.forEach(e => {
-                    replyText += `- ${e.time.elapsed}' ${e.player.name} (${e.team.name})\n`;
-                });
-                replyText += `\n`;
+            if (Array.isArray(events)) {
+                const goalEvents = events.filter(e => e.type === 'Goal');
+                if (goalEvents.length > 0) {
+                    replyText += `⚽️ ผู้ทำประตู:\n`;
+                    goalEvents.forEach(e => {
+                        const playerName = e.player?.name || 'Unknown';
+                        const teamName = e.team?.name || 'Unknown';
+                        replyText += `- ${e.time?.elapsed || '?'}' ${playerName} (${teamName})\n`;
+                    });
+                    replyText += `\n`;
+                }
             }
             
             // Stats (Possession)
-            if (stats && stats.length === 2) {
-                const homePossession = stats[0].statistics.find(s => s.type === 'Ball Possession')?.value || '-';
-                const awayPossession = stats[1].statistics.find(s => s.type === 'Ball Possession')?.value || '-';
+            if (Array.isArray(stats) && stats.length === 2) {
+                const homePossession = stats[0]?.statistics?.find(s => s.type === 'Ball Possession')?.value || '-';
+                const awayPossession = stats[1]?.statistics?.find(s => s.type === 'Ball Possession')?.value || '-';
                 replyText += `📊 ครองบอล: ${homePossession} - ${awayPossession}\n\n`;
             }
 
