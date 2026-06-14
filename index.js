@@ -385,7 +385,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
     if (text.startsWith('/mypredict')) {
       if (allFixturesCache.length === 0) await getAllMatchesFromSheet();
       const predictions = await getLatestPredictions();
-      const myPreds = predictions.filter(p => p.userId === userId);
+      const myPreds = predictions.filter(p => p.userId === userId && p.groupId === groupId);
       
       if (myPreds.length === 0) {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: 'คุณยังไม่เคยทายผลคู่ไหนเลยครับ ลองพิมพ์ /next เพื่อเริ่มทายผลสิ!'}] });
