@@ -46,7 +46,7 @@ async function fetchRecentNews() {
   }
 }
 
-async function summarizeNewsWithAI(newsList) {
+async function summarizeNewsWithAI(newsList, upcomingMatchesText = "") {
   if (!process.env.OPENAI_API_KEY) {
     console.error('OPENAI_API_KEY is not set');
     return null;
@@ -90,9 +90,13 @@ async function summarizeNewsWithAI(newsList) {
 - ต้องเว้นบรรทัด (Line Break) ระหว่างหัวข้อและพารากราฟให้ชัดเจน เพื่อไม่ให้ข้อความติดกันเป็นพืดเวลาอ่านใน LINE
 - คัดเลือกและสรุปเฉพาะข่าวเกี่ยวกับฟุตบอลโลก 2026 ชายเท่านั้น กีฬาอื่นตัดทิ้ง
 - ห้ามแนบ Link หรือ URL ใดๆ ให้อ่านจากชื่อข่าวแล้วสรุปด้วยคำพูดของคุณเอง
+- สำหรับหัวข้อ **แมตช์ต่อไป (Upcoming Matches)** ห้ามเดาเวลาเอง หรือแปลงเวลาจากข่าวต่างประเทศเด็ดขาด ให้ก๊อปปี้ข้อมูลเวลาและคู่แข่งที่เตรียมไว้ให้ใน "ตารางแข่งที่แนบมา" ไปใช้เป๊ะๆ เลย ถ้าไม่มีตารางแข่งแนบมาให้ละเว้นหัวข้อนี้ไป
 
 หัวข้อข่าวที่มี:
 ${newsText}
+
+ตารางแข่งที่แนบมา:
+${upcomingMatchesText || 'ไม่มี'}
 `;
 
   try {
@@ -109,9 +113,9 @@ ${newsText}
   }
 }
 
-async function getNewsSummaryMessage() {
+async function getNewsSummaryMessage(upcomingMatchesText = "") {
   const news = await fetchRecentNews();
-  const summary = await summarizeNewsWithAI(news.slice(0, 10)); // Limit to 10 articles to save tokens and focus on top news
+  const summary = await summarizeNewsWithAI(news.slice(0, 10), upcomingMatchesText); // Limit to 10 articles to save tokens and focus on top news
   if (!summary) return null;
   
   const now = new Date();

@@ -187,8 +187,24 @@ function startScheduler(client, sheetsFunctions) {
     if (groupIds.length === 0) return;
 
     try {
+      const allMatches = options.getAllFixturesCache ? options.getAllFixturesCache() : [];
+      const upcomingMatches = allMatches
+        .filter(m => m.status === 'NS' || m.status === 'TBD')
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(0, 3);
+        
+      let upcomingMatchesText = '';
+      if (upcomingMatches.length > 0) {
+        upcomingMatchesText = upcomingMatches.map(m => {
+          const matchDate = new Date(m.date);
+          const timeStr = matchDate.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
+          const dateStr = matchDate.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit' });
+          return `- ${m.homeTeam} vs ${m.awayTeam} (วันที่ ${dateStr} เวลา ${timeStr} น. เวลาไทย)`;
+        }).join('\n');
+      }
+
       const { getNewsSummaryMessage } = require('./news');
-      const message = await getNewsSummaryMessage();
+      const message = await getNewsSummaryMessage(upcomingMatchesText);
       if (message) {
         global.latestNewsSummary = message;
         for (const groupId of groupIds) {
