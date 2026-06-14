@@ -137,6 +137,28 @@ function getApiFixtureForMatch(sheetMatch) {
   });
 }
 
+async function getStandings() {
+  const cacheKey = `standings`;
+  if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < 60 * 60 * 1000) {
+    return cache[cacheKey].data;
+  }
+  try {
+    const res = await axios.get(`${BASE_URL}/standings`, {
+      headers: {
+        'x-rapidapi-host': 'v3.football.api-sports.io',
+        'x-rapidapi-key': process.env.API_SPORTS_KEY
+      },
+      params: { league: 1, season: 2026 }
+    });
+    const standings = res.data.response[0]?.league?.standings || [];
+    cache[cacheKey] = { data: standings, timestamp: Date.now() };
+    return standings;
+  } catch (err) {
+    console.error('Error fetching standings:', err.message);
+    return [];
+  }
+}
+
 module.exports = {
   getLineups,
   getEvents,
@@ -145,5 +167,6 @@ module.exports = {
   getPredictions,
   getRealOdds,
   fetchAllApiFixtures,
-  getApiFixtureForMatch
+  getApiFixtureForMatch,
+  getStandings
 };

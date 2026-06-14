@@ -3,8 +3,16 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const {google} = require('googleapis');
 const { generateMatchesCarousel, getFlag, generateRankingsMessage } = require('./report');
-const { getLineups, getPredictions, getRealOdds, getApiFixtureForMatch } = require('./api-football');
+const { getLineups, getPredictions, getRealOdds, getApiFixtureForMatch, getStandings } = require('./api-football');
+const path = require('path');
 const app = express();
+
+// Web Portal Static Files & JSON parser (skip for webhook)
+app.use(express.static('public'));
+app.use((req, res, next) => {
+  if (req.path === '/webhook') return next();
+  express.json()(req, res, next);
+});
 
 let matchesCache = []; // Upcoming matches for carousel
 let allFixturesCache = []; // All 104 matches
@@ -199,7 +207,32 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
     // Ignore normal conversation
     if (!text.startsWith('/') && textLower !== '?' && textLower !== 'help') continue;
 
-    // --- 0. /setup ---
+    // --- 0. /portal ---
+    if (text.startsWith('/portal') || text.startsWith('/web')) {
+      if (event.source.type === 'group' || event.source.type === 'room') {
+        const sheets = await getSheetsClient();
+        const resSheet = await sheets.spreadsheets.values.get({
+          spreadsheetId: process.env.GOOGLE_SHEET_ID,
+          range: 'Groups!A2:C'
+        });
+        const rows = resSheet.data.values || [];
+        const group = rows.find(r => r[0] === groupId);
+        
+        let replyText = '';
+        if (group) {
+          const webUrl = `https://wc26-bot.onrender.com`;
+          replyText = `🌐 **Web Portal กลุ่ม: ${group[1]}**\n\n🔗 URL: ${webUrl}\n🔑 Password: ${group[2]}\n\n(รหัสผ่านนี้ใช้เข้าดูข้อมูลเฉพาะกลุ่มเราเท่านั้น ห้ามบอกกลุ่มอื่นนะ!)`;
+        } else {
+          replyText = `⚠️ ยังไม่ได้ตั้งรหัสผ่านสำหรับกลุ่มนี้ครับ รบกวนแอดมินเข้าไปเพิ่มข้อมูลใน Google Sheet แผ่น 'Groups' โดยใส่ GroupId, ชื่อกลุ่ม และ รหัสผ่าน ครับ\n(GroupId: ${groupId})`;
+        }
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: replyText }] });
+      } else {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: '⚠️ คำสั่งนี้ใช้ได้เฉพาะในกลุ่ม (Group Chat) เท่านั้นครับ' }] });
+      }
+      continue;
+    }
+
+    // --- 0.1 /setup ---
     if (text.startsWith('/setup')) {
       if (event.source.type === 'group') {
         const replyText = `✅ บอทอยู่ในกลุ่มนี้เรียบร้อยแล้ว!\n\n📋 Group ID ของกลุ่มนี้คือ:\n${event.source.groupId}\n\n👉 โปรดนำค่านี้ไปใส่ใน Environment Variables ของ Render ในชื่อ LINE_GROUP_ID ครับ`;
@@ -665,6 +698,118 @@ app.get('/api/upcoming-matches', async (req, res) => {
     res.json({ ok: true, matchesCount: matches.length });
   } catch (err) {
     res.status(500).json({ error: 'failed_to_fetch_matches' });
+  }
+});
+
+
+// --- Web Portal APIs ---
+app.post('/api/login', async (req, res) => {
+  const { groupId, password } = req.body;
+  if (!groupId || !password) return res.status(400).json({ error: 'Missing parameters' });
+  try {
+    const sheets = await getSheetsClient();
+    const resSheet = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: 'Groups!A2:C'
+    });
+    const rows = resSheet.data.values || [];
+    const group = rows.find(r => r[0] === groupId && r[2] === password);
+    if (group) {
+      res.json({ success: true, groupName: group[1] });
+    } else {
+      res.status(401).json({ error: 'Invalid group ID or password' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+app.get('/api/group/:groupId/rank', async (req, res) => {
+  const { groupId } = req.params;
+  try {
+    await getAllMatchesFromSheet();
+    const allPredictions = await getLatestPredictions();
+    const groupPreds = allPredictions.filter(p => p.groupId === groupId);
+    
+    const scores = {};
+    const userPredictions = {};
+    
+    groupPreds.forEach(p => {
+      const matchInfo = allFixturesCache.find(m => String(m.matchId) === String(p.matchId));
+      if (!scores[p.userId]) {
+        scores[p.userId] = { displayName: p.displayName, points: 0, w: 0, d: 0, l: 0 };
+        userPredictions[p.userId] = [];
+      }
+      
+      let pts = 0;
+      if (matchInfo && matchInfo.status === 'FT') {
+        pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
+        scores[p.userId].points += pts;
+        if (pts === 3) scores[p.userId].w++;
+        else if (pts === 1) scores[p.userId].d++;
+        else scores[p.userId].l++;
+      }
+      
+      userPredictions[p.userId].push({
+        userId: p.userId,
+        displayName: p.displayName,
+        matchId: p.matchId,
+        homeTeam: matchInfo ? matchInfo.homeTeam : 'Unknown',
+        awayTeam: matchInfo ? matchInfo.awayTeam : 'Unknown',
+        prediction: p.prediction,
+        outcome: p.outcome,
+        points: pts,
+        status: matchInfo ? matchInfo.status : 'NS',
+        homeScore: matchInfo ? matchInfo.homeScore : null,
+        awayScore: matchInfo ? matchInfo.awayScore : null
+      });
+    });
+    
+    const leaderboard = Object.values(scores).sort((a, b) => b.points - a.points || b.w - a.w || b.d - a.d);
+    
+    res.json({ leaderboard, userPredictions });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+app.get('/api/matches', async (req, res) => {
+  try {
+    const matches = await getAllMatchesFromSheet();
+    res.json({ matches });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+app.get('/api/match/:matchId/details', async (req, res) => {
+  const { matchId } = req.params;
+  try {
+    const match = allFixturesCache.find(m => String(m.matchId) === String(matchId));
+    if (!match || !match.apiFixtureId) return res.json({ lineups: null, odds: null });
+    
+    const lineups = await getLineups(match.apiFixtureId);
+    const odds = await getRealOdds(match.apiFixtureId);
+    
+    res.json({ lineups, odds });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+app.get('/api/news', (req, res) => {
+  res.json({ news: global.latestNewsSummary || null });
+});
+
+app.get('/api/standings', async (req, res) => {
+  try {
+    const standings = await getStandings();
+    res.json({ standings });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal error' });
   }
 });
 

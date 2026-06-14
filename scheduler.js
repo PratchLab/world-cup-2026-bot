@@ -190,6 +190,7 @@ function startScheduler(client, sheetsFunctions) {
       const { getNewsSummaryMessage } = require('./news');
       const message = await getNewsSummaryMessage();
       if (message) {
+        global.latestNewsSummary = message;
         for (const groupId of groupIds) {
           await client.pushMessage({ to: groupId, messages: [{ type: 'text', text: message }] });
         }
