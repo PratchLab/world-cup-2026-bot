@@ -137,21 +137,19 @@ function getApiFixtureForMatch(sheetMatch) {
   });
 }
 
+const standingsCache = {};
+
 async function getStandings() {
-  const cacheKey = `standings`;
-  if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < 60 * 60 * 1000) {
-    return cache[cacheKey].data;
+  const cacheKey = 'standings';
+  if (standingsCache[cacheKey] && Date.now() - standingsCache[cacheKey].timestamp < 60 * 60 * 1000) {
+    return standingsCache[cacheKey].data;
   }
   try {
-    const res = await axios.get(`${BASE_URL}/standings`, {
-      headers: {
-        'x-rapidapi-host': 'v3.football.api-sports.io',
-        'x-rapidapi-key': process.env.API_SPORTS_KEY
-      },
+    const res = await api.get('/standings', {
       params: { league: 1, season: 2026 }
     });
     const standings = res.data.response[0]?.league?.standings || [];
-    cache[cacheKey] = { data: standings, timestamp: Date.now() };
+    standingsCache[cacheKey] = { data: standings, timestamp: Date.now() };
     return standings;
   } catch (err) {
     console.error('Error fetching standings:', err.message);
