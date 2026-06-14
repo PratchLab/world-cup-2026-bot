@@ -175,16 +175,7 @@ window.toggleMatchDetails = async function(matchId) {
   } else {
     html += '<ul style="font-size:14px; margin-bottom: 16px;">';
     preds.forEach(p => {
-      // Find displayName from userPredictionsData
-      let dName = 'Unknown';
-      for (const id in userPredictionsData) {
-        const found = userPredictionsData[id].find(up => String(up.matchId) === String(matchId) && up.prediction === p.prediction);
-        if (found) {
-           dName = userPredictionsData[id][0]?.displayName || 'Unknown';
-           break;
-        }
-      }
-      html += `<li>${dName}: ${p.prediction} (${p.outcome})</li>`;
+      html += `<li>${p.displayName || 'Unknown'}: ${p.prediction} (${p.outcome})</li>`;
     });
     html += '</ul>';
   }
