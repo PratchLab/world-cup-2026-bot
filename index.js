@@ -705,8 +705,8 @@ app.get('/api/upcoming-matches', async (req, res) => {
 
 // --- Web Portal APIs ---
 app.post('/api/login', async (req, res) => {
-  const { groupId, password } = req.body;
-  if (!groupId || !password) return res.status(400).json({ error: 'Missing parameters' });
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Missing password' });
   try {
     const sheets = await getSheetsClient();
     const resSheet = await sheets.spreadsheets.values.get({
@@ -714,11 +714,11 @@ app.post('/api/login', async (req, res) => {
       range: 'Groups!A2:C'
     });
     const rows = resSheet.data.values || [];
-    const group = rows.find(r => r[0] === groupId && r[2] === password);
+    const group = rows.find(r => r[2] === password);
     if (group) {
-      res.json({ success: true, groupName: group[1] });
+      res.json({ success: true, groupId: group[0], groupName: group[1] });
     } else {
-      res.status(401).json({ error: 'Invalid group ID or password' });
+      res.status(401).json({ error: 'Invalid password' });
     }
   } catch (err) {
     console.error(err);

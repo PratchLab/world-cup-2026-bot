@@ -17,8 +17,10 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
 
 async function checkLogin() {
   if (currentGroupId && currentPassword) {
-    const res = await apiFetch('/api/login', 'POST', { groupId: currentGroupId, password: currentPassword });
+    const res = await apiFetch('/api/login', 'POST', { password: currentPassword });
     if (res.success) {
+      currentGroupId = res.groupId;
+      localStorage.setItem('groupId', currentGroupId);
       groupNameDisplay.innerText = res.groupName;
       loginContainer.classList.add('hidden');
       appContainer.classList.remove('hidden');
@@ -33,14 +35,13 @@ async function checkLogin() {
 }
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
-  const gId = document.getElementById('groupIdInput').value.trim();
   const pwd = document.getElementById('passwordInput').value.trim();
-  const res = await apiFetch('/api/login', 'POST', { groupId: gId, password: pwd });
+  const res = await apiFetch('/api/login', 'POST', { password: pwd });
   
   if (res.success) {
-    localStorage.setItem('groupId', gId);
+    localStorage.setItem('groupId', res.groupId);
     localStorage.setItem('password', pwd);
-    currentGroupId = gId;
+    currentGroupId = res.groupId;
     currentPassword = pwd;
     groupNameDisplay.innerText = res.groupName;
     loginContainer.classList.add('hidden');
