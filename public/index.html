@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Cup 2026 Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="login-container" class="container">
+    <div class="card login-card">
+      <h1>🏆 World Cup 2026</h1>
+      <p>เข้าสู่ระบบ Web Portal</p>
+      <input type="text" id="groupIdInput" placeholder="Group ID" />
+      <input type="password" id="passwordInput" placeholder="Password" />
+      <button id="loginBtn">เข้าสู่ระบบ</button>
+      <p id="loginError" class="error hidden">รหัสผ่านหรือ Group ID ไม่ถูกต้อง</p>
+    </div>
+  </div>
+
+  <div id="app-container" class="container hidden">
+    <nav>
+      <h2 id="groupNameDisplay">Group</h2>
+      <ul>
+        <li><a href="#" data-page="ranking" class="active">Ranking</a></li>
+        <li><a href="#" data-page="schedule">Schedule & Results</a></li>
+        <li><a href="#" data-page="standings">WC Standings</a></li>
+        <li><a href="#" data-page="news">News</a></li>
+      </ul>
+      <button id="logoutBtn" class="btn-small">Logout</button>
+    </nav>
+    <main id="main-content">
+      <!-- Content injected by JS -->
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
