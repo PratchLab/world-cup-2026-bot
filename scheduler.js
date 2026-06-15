@@ -190,13 +190,13 @@ function startScheduler(client, sheetsFunctions) {
       const allMatches = getAllFixturesCache ? getAllFixturesCache() : [];
       const upcomingMatches = allMatches
         .filter(m => m.status === 'NS' || m.status === 'TBD')
-        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
         .slice(0, 3);
         
       let upcomingMatchesText = '';
       if (upcomingMatches.length > 0) {
         upcomingMatchesText = upcomingMatches.map(m => {
-          const matchDate = new Date(m.date);
+          const matchDate = new Date(m.startTime);
           const timeStr = matchDate.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
           const dateStr = matchDate.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit' });
           return `- ${m.homeTeam} vs ${m.awayTeam} (วันที่ ${dateStr} เวลา ${timeStr} น. เวลาไทย)`;

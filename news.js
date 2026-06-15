@@ -46,7 +46,7 @@ async function fetchRecentNews() {
   }
 }
 
-async function summarizeNewsWithAI(newsList, upcomingMatchesText = "") {
+async function pickAndSummarizeBestNews(newsList, upcomingMatchesText = "") {
   if (!process.env.OPENAI_API_KEY) {
     console.error('OPENAI_API_KEY is not set');
     return null;
@@ -57,56 +57,61 @@ async function summarizeNewsWithAI(newsList, upcomingMatchesText = "") {
   }
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  
   const newsText = newsList.map((n, i) => `${i+1}. ${n.title}`).join('\n');
-  
-  const prompt = `
-# Role
-คุณคือนักข่าวกีฬาและคอลัมนิสต์ฟุตบอลตัวยง เป็นผู้ชายวัย Gen Y ชื่อ "ว.ค.26" ที่มีสไตล์การเล่าเรื่องสนุกสนาน กวนนิดๆ เป็นกันเอง และรู้ลึกรู้จริงเรื่องฟุตบอลโลก 2026
 
-# Context
-คุณต้องสรุปข่าวสารฟุตบอลโลก 2026 จากข้อมูลดิบรูปแบบ RSS Feed เพื่อนำไปส่งอัปเดตใน "LINE Group" ของกลุ่มเพื่อนหรือแฟนบอลคอมมูนิตี้ทุกๆ 12 ชั่วโมง ข้อมูลดิบจะประกอบด้วยผลการแข่งขัน สถิติผู้เล่น เหตุการณ์สำคัญ บทสัมภาษณ์ และราคาต่อรอง ซึ่งคุณต้องนำมาย่อยให้อ่านง่ายและลื่นไหลที่สุดบนหน้าจอสมาร์ตโฟน
-
-# Task
-เขียนข้อความสรุปข่าวฟุตบอลโลก 2026 โดยดึงข้อมูลไฮไลต์ที่สำคัญมาเล่าใหม่ในสไตล์ของ "ว.ค.26" พร้อมตกแต่งข้อความด้วย Emoji ให้ดูมีสีสัน น่าอ่าน และเหมาะกับการส่งต่อในแอปพลิเคชัน LINE
-
-# Goal
-สร้างข่าวสารอัปเดตที่สดใหม่ รวดเร็ว กระชับ ทำให้สมาชิกในกลุ่ม LINE รู้สึกตื่นเต้น มีอารมณ์ร่วม และติดตามสถานการณ์ฟุตบอลโลก 2026 ได้อย่างครบถ้วนและสนุกสนานโดยไม่ต้องไปหาอ่านที่อื่นเพิ่ม
-
-# Format
-โครงสร้างข้อความแบบ Markdown ที่ปรับให้เข้ากับการอ่านใน LINE:
-- **พาดหัวข่าว (Headline):** สั้น กระแทกใจ พร้อม Emoji ดึงดูดสายตา เช่น 🚨⚽🔥
-- **สรุปผลสกอร์ (Match Results):** รายงานผลแมตช์ล่าสุดแบบกระชับ (เช่น 🇧🇷 บราซิล 2 - 0 ฝรั่งเศส 🇫🇷)
-- **ไฮไลต์เด็ด (Key Highlights):** ใครยิงประตู ใครเจ็บ หรือใครโดนใบแดงไล่ออก ใช้ Bullet Points เพื่อให้อ่านง่าย
-- **วาทะเด็ด (Manager Quotes):** หยิบคำสัมภาษณ์กวนๆ หรือดุดันของกุนซือมาขยี้ 🎤
-- **ราคาต่อรอง / เกร็ดน่ารู้ (Betting Odds / Trivia):** แทรกราคาต่อรองหรือข้อมูลสถิติที่น่าสนใจ (ถ้ามีใน Feed) 📊
-- **แมตช์ต่อไป (Upcoming Matches):** โปรแกรมแข่งขันรอบถัดไป พร้อมเวลาเตะ ⏰
-
-# Constraints
-- ความยาวของข้อความทั้งหมดต้องรวมแล้วอยู่ที่ไม่เกิน 500 คำ 
-- ใช้สำนวนภาษาแบบ Gen Y (เช่น ตึงจัด, ตัวตึง, ยับๆ, เดือดมาก, เอาเรื่อง) เหมือนเพื่อนเมาท์มอยเรื่องฟุตบอลให้เพื่อนในกลุ่มฟัง
-- ห้ามใช้ภาษาทางการ ภาษาข่าวที่แข็งทื่อ หรือคำศัพท์ที่อ่านแล้วน่าเบื่อเด็ดขาด
-- ต้องใช้ Emoji แทรกในประโยคและหัวข้อต่างๆ อย่างพอดี ไม่รกหรือล้นจนเกินไป เพื่อดึงดูดสายตา
-- ต้องเว้นบรรทัด (Line Break) ระหว่างหัวข้อและพารากราฟให้ชัดเจน เพื่อไม่ให้ข้อความติดกันเป็นพืดเวลาอ่านใน LINE
-- คัดเลือกและสรุปเฉพาะข่าวเกี่ยวกับฟุตบอลโลก 2026 ชายเท่านั้น กีฬาอื่นตัดทิ้ง
-- ห้ามแนบ Link หรือ URL ใดๆ ให้อ่านจากชื่อข่าวแล้วสรุปด้วยคำพูดของคุณเอง
-- สำหรับหัวข้อ **แมตช์ต่อไป (Upcoming Matches)** ห้ามเดาเวลาเอง หรือแปลงเวลาจากข่าวต่างประเทศเด็ดขาด ให้ก๊อปปี้ข้อมูลเวลาและคู่แข่งที่เตรียมไว้ให้ใน "ตารางแข่งที่แนบมา" ไปใช้เป๊ะๆ เลย ถ้าไม่มีตารางแข่งแนบมาให้ละเว้นหัวข้อนี้ไป
-
-หัวข้อข่าวที่มี:
-${newsText}
-
-ตารางแข่งที่แนบมา:
-${upcomingMatchesText || 'ไม่มี'}
-`;
-
+  // Step 1: Let AI pick the best 1 article
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Using gpt-4o-mini for speed and cost efficiency
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
+    const pickPrompt = `จากรายชื่อพาดหัวข่าวด้านล่างนี้ ให้เลือกมา 1 ข่าวที่น่าสนใจที่สุดสำหรับแฟนบอลไทย
+กฎ:
+- เลือกเฉพาะข่าวที่เกี่ยวกับฟุตบอลโลก 2026 (รายการแข่งขันที่จัดในปี 2026) เท่านั้น
+- ห้ามเลือกข่าวที่พูดถึงผลการแข่งขันของฟุตบอลโลกปีอื่น (2018, 2022 ฯลฯ) มาเป็นข่าวหลัก
+- ห้ามเลือกข่าวฟุตบอลหญิง หรือกีฬาอื่นที่ไม่ใช่ฟุตบอลโลกชาย 2026
+- ห้ามเลือกข่าวที่เป็นแค่ราคาต่อรองหรือวิธีดูบอล ให้เลือกข่าวที่มีเนื้อหาสาระน่าสนใจ
+- ตอบแค่ตัวเลขหมายเลขข่าวที่เลือก เช่น "3"
+
+รายชื่อข่าว:
+${newsText}`;
+
+    const pickRes = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: pickPrompt }],
+      max_tokens: 10,
     });
     
-    return response.choices[0].message.content.trim();
+    const pickedNum = parseInt(pickRes.choices[0].message.content.trim());
+    const pickedNews = newsList[pickedNum - 1] || newsList[0];
+    
+    console.log(`[News] AI picked #${pickedNum}: "${pickedNews.title}"`);
+
+    // Step 2: Summarize the picked article in our own style
+    const summarizePrompt = `# Role
+คุณคือนักข่าวกีฬาและคอลัมนิสต์ฟุตบอลตัวยง เป็นผู้ชายวัย Gen Y ชื่อ "ว.ค.26" ที่มีสไตล์การเล่าเรื่องสนุกสนาน กวนนิดๆ เป็นกันเอง และรู้ลึกรู้จริงเรื่องฟุตบอลโลก 2026
+
+# Task
+จากพาดหัวข่าวนี้: "${pickedNews.title}"
+ให้เขียนบทความสรุปข่าวนี้ใหม่ทั้งหมดในสำนวนของ "ว.ค.26" เพื่อส่งเข้ากลุ่ม LINE ของแฟนบอล
+
+# Constraints
+- เขียนใหม่ทั้งหมดด้วยคำพูดของคุณเอง ห้ามแปลตรงตัวจากพาดหัวข่าว
+- ใช้สำนวนภาษาแบบ Gen Y (เช่น ตึงจัด, ตัวตึง, ยับๆ, เดือดมาก, เอาเรื่อง) เหมือนเพื่อนเมาท์มอยเรื่องฟุตบอลให้เพื่อนในกลุ่มฟัง
+- ตกแต่งด้วย Emoji ให้ดูมีสีสัน แต่ไม่รกจนเกินไป
+- ความยาวไม่เกิน 200 คำ
+- ต้องเว้นบรรทัดระหว่างพารากราฟให้ชัดเจน เพื่อไม่ให้ข้อความติดกันเป็นพืดเวลาอ่านใน LINE
+- ห้ามแนบ Link หรือ URL ใดๆ
+- ห้ามสร้างสกอร์การแข่งขันขึ้นมาเองเด็ดขาด ถ้าพาดหัวข่าวไม่ได้ระบุสกอร์ ก็อย่าใส่สกอร์
+- เน้นข้อมูลที่เกี่ยวข้องกับฟุตบอลโลก 2026 ที่กำลังจัดอยู่ตอนนี้เท่านั้น
+
+# แมตช์ต่อไป
+ต่อท้ายบทความด้วยหัวข้อ "แมตช์ต่อไป" โดยห้ามเดาเวลาเอง ให้ใช้ข้อมูลนี้เท่านั้น:
+${upcomingMatchesText || 'ไม่มีข้อมูล (ให้ละเว้นหัวข้อนี้ไป)'}`;
+
+    const sumRes = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: summarizePrompt }],
+      max_tokens: 800,
+    });
+    
+    return sumRes.choices[0].message.content.trim();
   } catch (error) {
     console.error("Error from OpenAI API:", error.message);
     return null;
@@ -115,7 +120,7 @@ ${upcomingMatchesText || 'ไม่มี'}
 
 async function getNewsSummaryMessage(upcomingMatchesText = "") {
   const news = await fetchRecentNews();
-  const summary = await summarizeNewsWithAI(news.slice(0, 10), upcomingMatchesText); // Limit to 10 articles to save tokens and focus on top news
+  const summary = await pickAndSummarizeBestNews(news.slice(0, 15), upcomingMatchesText);
   if (!summary) return null;
   
   const now = new Date();
@@ -140,6 +145,6 @@ async function getNewsSummaryMessage(upcomingMatchesText = "") {
 
 module.exports = {
   fetchRecentNews,
-  summarizeNewsWithAI,
+  pickAndSummarizeBestNews,
   getNewsSummaryMessage
 };
