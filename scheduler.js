@@ -187,7 +187,7 @@ function startScheduler(client, sheetsFunctions) {
     if (groupIds.length === 0) return;
 
     try {
-      const allMatches = options.getAllFixturesCache ? options.getAllFixturesCache() : [];
+      const allMatches = getAllFixturesCache ? getAllFixturesCache() : [];
       const upcomingMatches = allMatches
         .filter(m => m.status === 'NS' || m.status === 'TBD')
         .sort((a, b) => new Date(a.date) - new Date(b.date))
