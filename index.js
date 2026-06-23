@@ -74,7 +74,7 @@ async function getAllMatchesFromSheet() {
   }));
   
   allFixturesCache = matches;
-  matchesCache = matches.filter(m => m.status === 'NS').slice(0, 5);
+  matchesCache = matches.filter(m => m.status === 'NS').slice(0, 6);
   return matches;
 }
 
@@ -342,7 +342,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         const upcomingMatches = matches
             .filter(m => new Date(m.startTime) > new Date() && m.status !== 'FT')
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
-            .slice(0, 5);
+            .slice(0, 6);
 
         if (upcomingMatches.length === 0) {
           await client.replyMessage({ replyToken: event.replyToken, messages: [{ type: 'text', text: 'ชิลๆ ไปก่อนพวก ไม่มีแมตช์เตะใน 24 ชม. นี้เลยว่ะ ไปเตะบอลพลาสติกหน้าปากซอยพลางๆ ก่อนนะ' }] });
@@ -536,7 +536,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       const upcoming = matches
         .filter(m => new Date(m.startTime) > new Date() && m.status !== 'FT')
         .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
-        .slice(0, 5);
+        .slice(0, 6);
       let replyText = `📅 โปรแกรมการแข่งขันที่กำลังจะมาถึง:\n\n`;
       if (upcoming.length === 0) {
         replyText += `ไม่มีแมตช์เตะแล้วครับ!`;
