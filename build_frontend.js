@@ -206,16 +206,17 @@ async function renderRanking() {
   userPredictionsData = res.userPredictions;
   
   let html = '<div class="card"><h2>🏆 Leaderboard</h2><div class="table-responsive"><table>';
-  html += '<thead><tr><th>#</th><th>Name</th><th>Points</th><th>W</th><th>D</th><th>L</th></tr></thead><tbody>';
+  html += '<thead><tr><th>#</th><th>Name</th><th>Points</th><th title="ทายสกอร์ถูกเป๊ะ (+3)">S &#127919;</th><th title="ทายผลถูก แต่สกอร์ไม่ตรง (+1)">R &#9989;</th><th title="ทายผิดหมด (+0)">X &#10060;</th></tr></thead><tbody>';
+
   
   res.leaderboard.forEach((u, i) => {
     html += \`<tr class="clickable" onclick="showUserPredictions('\${u.displayName}')">
       <td>\${i + 1}</td>
       <td><strong>\${u.displayName}</strong></td>
       <td>\${u.points}</td>
-      <td>\${u.w}</td>
+      <td style="color:#10b981;font-weight:600">\${u.w}</td>
       <td>\${u.d}</td>
-      <td>\${u.l}</td>
+      <td style="color:#64748b">\${u.l}</td>
     </tr>\`;
   });
   html += '</tbody></table></div></div>';
