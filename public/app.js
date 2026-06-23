@@ -16,14 +16,13 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
 }
 
 async function login() {
-  const gId = document.getElementById('groupIdInput').value.trim();
   const pwd = document.getElementById('passwordInput').value.trim();
-  const res = await apiFetch('/api/login', 'POST', { groupId: gId, password: pwd });
+  const res = await apiFetch('/api/login', 'POST', { password: pwd });
   
   if (res.success) {
-    localStorage.setItem('groupId', gId);
+    localStorage.setItem('groupId', res.groupId);
     localStorage.setItem('password', pwd);
-    currentGroupId = gId;
+    currentGroupId = res.groupId;
     currentPassword = pwd;
     groupNameDisplay.innerText = res.groupName;
     loginContainer.classList.add('hidden');

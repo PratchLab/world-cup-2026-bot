@@ -20,10 +20,9 @@ const indexHtml = `<!DOCTYPE html>
     <div class="card login-card">
       <h1>🏆 World Cup 2026</h1>
       <p>เข้าสู่ระบบ Web Portal</p>
-      <input type="text" id="groupIdInput" placeholder="Group ID" />
       <input type="password" id="passwordInput" placeholder="Password" />
       <button id="loginBtn">เข้าสู่ระบบ</button>
-      <p id="loginError" class="error hidden">รหัสผ่านหรือ Group ID ไม่ถูกต้อง</p>
+      <p id="loginError" class="error hidden">รหัสผ่านไม่ถูกต้อง</p>
     </div>
   </div>
 
@@ -158,14 +157,13 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
 }
 
 async function login() {
-  const gId = document.getElementById('groupIdInput').value.trim();
   const pwd = document.getElementById('passwordInput').value.trim();
-  const res = await apiFetch('/api/login', 'POST', { groupId: gId, password: pwd });
+  const res = await apiFetch('/api/login', 'POST', { password: pwd });
   
   if (res.success) {
-    localStorage.setItem('groupId', gId);
+    localStorage.setItem('groupId', res.groupId);
     localStorage.setItem('password', pwd);
-    currentGroupId = gId;
+    currentGroupId = res.groupId;
     currentPassword = pwd;
     groupNameDisplay.innerText = res.groupName;
     loginContainer.classList.add('hidden');
