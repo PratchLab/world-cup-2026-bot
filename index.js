@@ -3,7 +3,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const {google} = require('googleapis');
 const { generateMatchesCarousel, getFlag, generateRankingsMessage } = require('./report');
-const { getLineups, getPredictions, getRealOdds, getApiFixtureForMatch, getStandings } = require('./api-football');
+const { getLineups, getPredictions, getRealOdds, getApiFixtureForMatch, getStandings, getEvents } = require('./api-football');
 const path = require('path');
 const app = express();
 
@@ -813,6 +813,38 @@ app.get('/api/standings', async (req, res) => {
     res.status(500).json({ error: 'Internal error' });
   }
 });
+
+app.get('/api/group/:groupId/match/:matchId/details', async (req, res) => {
+  const { groupId, matchId } = req.params;
+  try {
+    const match = allFixturesCache.find(m => String(m.matchId) === String(matchId));
+    
+    let lineups = null, events = null;
+    if (match && match.apiFixtureId) {
+      [lineups, events] = await Promise.all([
+        getLineups(match.apiFixtureId),
+        getEvents(match.apiFixtureId)
+      ]);
+    }
+    
+    const allPredictions = await getLatestPredictions();
+    const matchPredictions = allPredictions
+      .filter(p => p.groupId === groupId && String(p.matchId) === String(matchId))
+      .map(p => {
+        let pts = null;
+        if (match && match.status === 'FT') {
+          pts = calculatePoints(p.prediction, p.outcome, match.homeScore, match.awayScore);
+        }
+        return { displayName: p.displayName, prediction: p.prediction, outcome: p.outcome, points: pts };
+      });
+    
+    res.json({ match, lineups, events, predictions: matchPredictions });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 
 const port = process.env.PORT || 3000;
 app.listen(port, async () => {

@@ -237,57 +237,201 @@ window.showUserPredictions = function(displayName) {
 };
 
 async function renderSchedule() {
-
   const res = await apiFetch('/api/matches');
   if (!res.matches) return mainContent.innerHTML = '<div class="card"><p class="error">ไม่สามารถโหลดตารางแข่งได้</p></div>';
 
   const matches = res.matches;
-  const now = new Date();
-
-  // Group by stage/round label
   const grouped = {};
-  matches.forEach(m => {
-    const label = m.stage || 'Group Stage';
+  matches.forEach(function(m) {
+    var label = m.stage || 'Group Stage';
     if (!grouped[label]) grouped[label] = [];
     grouped[label].push(m);
   });
 
-  let html = '<div class="card"><h2>📅 Schedule & Results</h2>';
+  var html = '<div class="card"><h2>&#128197; Schedule &amp; Results</h2>';
+  Object.keys(grouped).forEach(function(stage) {
+    html += '<h3 style="color:var(--text-muted);margin:20px 0 8px">' + stage + '</h3>';
+    grouped[stage].forEach(function(m) {
+      var matchTime = m.startTime ? new Date(m.startTime) : null;
+      var timeStr = matchTime ? matchTime.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+      var isPast = m.status === 'FT';
+      var isLive = m.status === '1H' || m.status === '2H' || m.status === 'HT' || m.status === 'LIVE';
+      var statusBadge = isPast ? '<span class="badge badge-neutral">FT</span>'
+        : isLive ? '<span class="badge badge-success">&#128308; LIVE</span>'
+        : '<span class="badge badge-neutral">&#9200; ' + timeStr + '</span>';
+      var score = (isPast || isLive)
+        ? '<strong style="font-size:18px;min-width:60px;text-align:center">' + (m.homeScore !== null ? m.homeScore : 0) + ' - ' + (m.awayScore !== null ? m.awayScore : 0) + '</strong>'
+        : '<span style="color:var(--text-muted);min-width:60px;text-align:center">vs</span>';
 
-  Object.keys(grouped).forEach(stage => {
-    html += \`<h3 style="color:var(--text-muted);margin:20px 0 8px">\${stage}</h3>\`;
-    grouped[stage].forEach(m => {
-      const matchTime = m.startTime ? new Date(m.startTime) : null;
-      const timeStr = matchTime ? matchTime.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
-      const isPast = m.status === 'FT';
-      const isLive = m.status === '1H' || m.status === '2H' || m.status === 'HT' || m.status === 'LIVE';
-      const statusBadge = isPast
-        ? \`<span class="badge badge-neutral">FT</span>\`
-        : isLive
-          ? \`<span class="badge badge-success" style="animation:pulse 1s infinite">🔴 LIVE</span>\`
-          : \`<span class="badge badge-neutral">⏰ \${timeStr}</span>\`;
-      const score = isPast || isLive
-        ? \`<strong style="font-size:18px">\${m.homeScore ?? 0} - \${m.awayScore ?? 0}</strong>\`
-        : \`<span style="color:var(--text-muted)">vs</span>\`;
-
-      html += \`
-        <div class="match-header" style="cursor:default">
-          <div style="display:flex;flex-direction:column;gap:4px;flex:1">
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <span style="min-width:130px;font-weight:600">\${m.homeTeam}</span>
-              \${score}
-              <span style="min-width:130px;font-weight:600">\${m.awayTeam}</span>
-            </div>
-            <div style="font-size:12px;color:var(--text-muted)">\${timeStr}</div>
-          </div>
-          <div>\${statusBadge}</div>
-        </div>\`;
+      html += '<div class="match-header" onclick="toggleMatchDetail(\\'' + m.matchId + '\\')" style="cursor:pointer">'
+        + '<div style="display:flex;flex-direction:column;gap:4px;flex:1">'
+        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        + '<span style="min-width:120px;font-weight:600">' + m.homeTeam + '</span>'
+        + score
+        + '<span style="min-width:120px;font-weight:600">' + m.awayTeam + '</span>'
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted)">' + timeStr + '</div>'
+        + '</div>'
+        + '<div style="display:flex;align-items:center;gap:8px">' + statusBadge + '<span style="color:var(--text-muted);font-size:18px">&#9660;</span></div>'
+        + '</div>'
+        + '<div id="detail-' + m.matchId + '" class="match-details"></div>';
     });
   });
-
   html += '</div>';
   mainContent.innerHTML = html;
 }
+
+window.toggleMatchDetail = async function(matchId) {
+  var panel = document.getElementById('detail-' + matchId);
+  if (!panel) return;
+  if (panel.classList.contains('open')) {
+    panel.classList.remove('open');
+    panel.innerHTML = '';
+    return;
+  }
+  panel.classList.add('open');
+  panel.innerHTML = '<p style="color:var(--text-muted);padding:8px">&#128257; กำลังโหลด...</p>';
+
+  var data = await apiFetch('/api/group/' + currentGroupId + '/match/' + matchId + '/details');
+  if (data.error) { panel.innerHTML = '<p class="error">โหลดไม่ได้: ' + data.error + '</p>'; return; }
+
+  var html = '';
+
+  // ---- Venue & Basic Info ----
+  var m = data.match;
+  if (m) {
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:14px;color:var(--text-muted)">';
+    if (m.startTime) {
+      var d = new Date(m.startTime);
+      html += '<span>&#128197; ' + d.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'short', day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) + '</span>';
+    }
+    html += '</div>';
+  }
+
+  // ---- Venue & Coach from lineups ----
+  var homeCoach = '-', awayCoach = '-', venue = '-';
+  if (data.lineups && data.lineups.length >= 1) {
+    homeCoach = data.lineups[0].coach ? data.lineups[0].coach.name : '-';
+    if (data.lineups[0].team && data.lineups[0].team.name) venue = data.lineups[0].team.name;
+  }
+  if (data.lineups && data.lineups.length >= 2) {
+    awayCoach = data.lineups[1].coach ? data.lineups[1].coach.name : '-';
+  }
+
+  // ---- Events: Goals, Cards, Subs ----
+  var goals = [], cards = [], subs = [];
+  if (data.events && data.events.length > 0) {
+    data.events.forEach(function(ev) {
+      if (ev.type === 'Goal' && ev.detail !== 'Missed Penalty') goals.push(ev);
+      else if (ev.type === 'Card') cards.push(ev);
+      else if (ev.type === 'subst') subs.push(ev);
+    });
+  }
+
+  // ---- Goals Section ----
+  if (goals.length > 0) {
+    html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#9917; ประตู</h4>';
+    html += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
+    goals.forEach(function(g) {
+      var icon = g.detail === 'Own Goal' ? '&#128563;' : g.detail === 'Penalty' ? '&#129311;' : '&#9917;';
+      var minute = g.time.elapsed + (g.time.extra ? '+' + g.time.extra : '') + '\\'';
+      html += '<div style="display:flex;gap:8px;align-items:center">'
+        + '<span style="color:var(--text-muted);min-width:40px">' + minute + '</span>'
+        + '<span>' + icon + ' <strong>' + (g.player ? g.player.name : '-') + '</strong>'
+        + (g.assist && g.assist.name ? ' <span style="color:var(--text-muted)">(assist: ' + g.assist.name + ')</span>' : '')
+        + ' <span style="color:var(--text-muted);font-size:12px">— ' + (g.team ? g.team.name : '') + '</span>'
+        + (g.detail === 'Own Goal' ? ' <span style="color:#ef4444;font-size:11px">OG</span>' : '')
+        + (g.detail === 'Penalty' ? ' <span style="color:#3b82f6;font-size:11px">PEN</span>' : '')
+        + '</span>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ---- Cards Section ----
+  if (cards.length > 0) {
+    html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#128737; ใบเหลือง/แดง</h4>';
+    html += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
+    cards.forEach(function(c) {
+      var icon = c.detail === 'Yellow Card' ? '&#128255;' : '&#128308;';
+      var minute = c.time.elapsed + (c.time.extra ? '+' + c.time.extra : '') + '\\'';
+      html += '<div style="display:flex;gap:8px;align-items:center">'
+        + '<span style="color:var(--text-muted);min-width:40px">' + minute + '</span>'
+        + '<span>' + icon + ' ' + (c.player ? c.player.name : '-')
+        + ' <span style="color:var(--text-muted);font-size:12px">— ' + (c.team ? c.team.name : '') + '</span></span>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ---- Substitutions ----
+  if (subs.length > 0) {
+    html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#128260; เปลี่ยนตัว</h4>';
+    html += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
+    subs.forEach(function(s) {
+      var minute = s.time.elapsed + (s.time.extra ? '+' + s.time.extra : '') + '\\'';
+      html += '<div style="display:flex;gap:8px;align-items:center">'
+        + '<span style="color:var(--text-muted);min-width:40px">' + minute + '</span>'
+        + '<span>&#128994; ' + (s.assist ? s.assist.name : '-')
+        + ' &#128308; ' + (s.player ? s.player.name : '-')
+        + ' <span style="color:var(--text-muted);font-size:12px">— ' + (s.team ? s.team.name : '') + '</span></span>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ---- Lineups ----
+  if (data.lineups && data.lineups.length > 0) {
+    html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#128101; รายชื่อผู้เล่น</h4>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
+    data.lineups.forEach(function(lineup) {
+      html += '<div>'
+        + '<div style="font-weight:700;margin-bottom:4px">' + (lineup.team ? lineup.team.name : '') + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">'
+        + '&#129776; ' + (lineup.formation || '-') + ' &nbsp;|&nbsp; &#129339; ' + (lineup.coach ? lineup.coach.name : '-')
+        + '</div>'
+        + '<div style="font-size:13px;display:flex;flex-direction:column;gap:2px">';
+      if (lineup.startXI && lineup.startXI.length > 0) {
+        lineup.startXI.forEach(function(p) {
+          var player = p.player;
+          html += '<div><span style="color:var(--text-muted);min-width:24px;display:inline-block">' + (player.number || '') + '</span> ' + (player.name || '-') + '</div>';
+        });
+      }
+      if (lineup.substitutes && lineup.substitutes.length > 0) {
+        html += '<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">สำรอง:</div>';
+        lineup.substitutes.forEach(function(p) {
+          var player = p.player;
+          html += '<div style="color:var(--text-muted)"><span style="min-width:24px;display:inline-block">' + (player.number || '') + '</span> ' + (player.name || '-') + '</div>';
+        });
+      }
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+
+  // ---- Predictions Table ----
+  html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#127919; การทายของกลุ่ม</h4>';
+  if (!data.predictions || data.predictions.length === 0) {
+    html += '<p style="color:var(--text-muted);font-size:14px">ยังไม่มีการทาย</p>';
+  } else {
+    html += '<div class="table-responsive"><table><thead><tr>'
+      + '<th>ชื่อ</th><th>ทาย</th><th>คะแนน</th>'
+      + '</tr></thead><tbody>';
+    data.predictions.forEach(function(p) {
+      var ptsBadge = p.points === 3 ? '<span style="color:#10b981;font-weight:700">+3 &#127919;</span>'
+        : p.points === 1 ? '<span style="color:#f59e0b;font-weight:700">+1 &#9989;</span>'
+        : p.points === 0 && p.outcome !== null ? '<span style="color:#64748b">0 &#10060;</span>'
+        : '<span style="color:var(--text-muted)">รอผล</span>';
+      html += '<tr><td><strong>' + p.displayName + '</strong></td>'
+        + '<td>' + (p.prediction || '-') + '</td>'
+        + '<td>' + ptsBadge + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  panel.innerHTML = html;
+};
 
 async function renderStandings() {
   const res = await apiFetch('/api/standings');
