@@ -93,8 +93,115 @@ window.showUserPredictions = function(displayName) {
        // Since I didn't save displayName in userPredictions array directly, I will pass userId in the next fix.
     }
   }
-  // Simplified for now, let's fix renderRanking to use userId
 };
 
-// ... To be completed ...
-// I will rewrite app.js properly.
+async function renderSchedule() {
+
+  const res = await apiFetch('/api/matches');
+  if (!res.matches) return mainContent.innerHTML = '<div class="card"><p class="error">ไม่สามารถโหลดตารางแข่งได้</p></div>';
+
+  const matches = res.matches;
+  const now = new Date();
+
+  // Group by stage/round label
+  const grouped = {};
+  matches.forEach(m => {
+    const label = m.stage || 'Group Stage';
+    if (!grouped[label]) grouped[label] = [];
+    grouped[label].push(m);
+  });
+
+  let html = '<div class="card"><h2>📅 Schedule & Results</h2>';
+
+  Object.keys(grouped).forEach(stage => {
+    html += `<h3 style="color:var(--text-muted);margin:20px 0 8px">${stage}</h3>`;
+    grouped[stage].forEach(m => {
+      const matchTime = m.startTime ? new Date(m.startTime) : null;
+      const timeStr = matchTime ? matchTime.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+      const isPast = m.status === 'FT';
+      const isLive = m.status === '1H' || m.status === '2H' || m.status === 'HT' || m.status === 'LIVE';
+      const statusBadge = isPast
+        ? `<span class="badge badge-neutral">FT</span>`
+        : isLive
+          ? `<span class="badge badge-success" style="animation:pulse 1s infinite">🔴 LIVE</span>`
+          : `<span class="badge badge-neutral">⏰ ${timeStr}</span>`;
+      const score = isPast || isLive
+        ? `<strong style="font-size:18px">${m.homeScore ?? 0} - ${m.awayScore ?? 0}</strong>`
+        : `<span style="color:var(--text-muted)">vs</span>`;
+
+      html += `
+        <div class="match-header" style="cursor:default">
+          <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <span style="min-width:130px;font-weight:600">${m.homeTeam}</span>
+              ${score}
+              <span style="min-width:130px;font-weight:600">${m.awayTeam}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted)">${timeStr}</div>
+          </div>
+          <div>${statusBadge}</div>
+        </div>`;
+    });
+  });
+
+  html += '</div>';
+  mainContent.innerHTML = html;
+}
+
+async function renderStandings() {
+  const res = await apiFetch('/api/standings');
+  if (!res.standings || res.standings.length === 0) {
+    return mainContent.innerHTML = '<div class="card"><p style="color:var(--text-muted)">ยังไม่มีข้อมูลตารางคะแนน</p></div>';
+  }
+
+  let html = '<div class="card"><h2>🌍 WC Standings — Group Stage</h2>';
+
+  res.standings.forEach(group => {
+    if (!group || group.length === 0) return;
+    const groupName = group[0]?.group || 'Group';
+    html += `<h3 style="color:var(--primary);margin:20px 0 8px">${groupName}</h3>
+      <div class="table-responsive"><table>
+        <thead><tr>
+          <th>#</th><th>ทีม</th>
+          <th title="แข่ง">P</th>
+          <th title="ชนะ" style="color:#10b981">W</th>
+          <th title="เสมอ">D</th>
+          <th title="แพ้" style="color:#ef4444">L</th>
+          <th title="ประตูได้">GF</th>
+          <th title="ประตูเสีย">GA</th>
+          <th title="ผลต่างประตู">GD</th>
+          <th title="คะแนน"><strong>Pts</strong></th>
+        </tr></thead><tbody>`;
+
+    group.forEach((team, idx) => {
+      const s = team.all;
+      const gd = s.goals.for - s.goals.against;
+      const qualify = idx < 2 ? 'background:rgba(59,130,246,0.1)' : '';
+      html += `<tr style="${qualify}">
+        <td>${team.rank}</td>
+        <td><strong>${team.team.name}</strong></td>
+        <td>${s.played}</td>
+        <td style="color:#10b981">${s.win}</td>
+        <td>${s.draw}</td>
+        <td style="color:#ef4444">${s.lose}</td>
+        <td>${s.goals.for}</td>
+        <td>${s.goals.against}</td>
+        <td>${gd >= 0 ? '+' : ''}${gd}</td>
+        <td><strong>${team.points}</strong></td>
+      </tr>`;
+    });
+
+    html += '</tbody></table></div>';
+  });
+
+  html += '<p style="font-size:12px;color:var(--text-muted);margin-top:16px">🔵 = ผ่านเข้ารอบต่อไป (2 อันดับแรกต่อกลุ่ม)</p></div>';
+  mainContent.innerHTML = html;
+}
+
+async function renderNews() {
+  const res = await apiFetch('/api/news');
+  if (!res.news) {
+    return mainContent.innerHTML = '<div class="card"><h2>📰 ข่าวล่าสุด</h2><p style="color:var(--text-muted)">ยังไม่มีข่าวในขณะนี้ ระบบจะดึงข่าวใหม่โดยอัตโนมัติ</p></div>';
+  }
+  mainContent.innerHTML = `<div class="card"><h2>📰 ข่าวล่าสุด</h2><div class="news-content">${res.news}</div></div>`;
+}
