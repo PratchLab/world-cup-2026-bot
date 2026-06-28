@@ -170,6 +170,8 @@ function startScheduler(client, sheetsFunctions) {
                 }
                 
                 groupReplyText += `\nพิมพ์ /rank เพื่อดูตารางคะแนนรวมทั้งหมดครับ! 👑`;
+                groupReplyText += `\nพิมพ์ /rank32 เพื่อดูตารางคะแนนเฉพาะตั้งแต่รอบ 32 ทีม`;
+                groupReplyText += `\nพิมพ์ /rank16 เพื่อดูตารางคะแนนเฉพาะตั้งแต่รอบ 16 ทีม`;
 
                 try {
                   await client.pushMessage({ to: groupId, messages: [{ type: 'text', text: groupReplyText }] });

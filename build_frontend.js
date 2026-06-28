@@ -31,6 +31,8 @@ const indexHtml = `<!DOCTYPE html>
       <h2 id="groupNameDisplay">Group</h2>
       <ul>
         <li><a href="#" data-page="ranking" class="active">Ranking</a></li>
+        <li><a href="#" data-page="ranking32">Ranking 32</a></li>
+        <li><a href="#" data-page="ranking16">Ranking 16</a></li>
         <li><a href="#" data-page="schedule">Schedule & Results</a></li>
         <li><a href="#" data-page="standings">WC Standings</a></li>
         <li><a href="#" data-page="news">News</a></li>
@@ -191,19 +193,24 @@ document.querySelectorAll('nav a').forEach(a => {
 
 async function loadPage(page) {
   mainContent.innerHTML = '<div class="card"><p>Loading...</p></div>';
-  if (page === 'ranking') await renderRanking();
+  if (page.startsWith('ranking')) await renderRanking(page);
   else if (page === 'schedule') await renderSchedule();
   else if (page === 'standings') await renderStandings();
   else if (page === 'news') await renderNews();
 }
 
-async function renderRanking() {
-  const res = await apiFetch(\`/api/group/\${currentGroupId}/rank\`);
+async function renderRanking(page) {
+  let query = '';
+  let title = '🏆 Leaderboard';
+  if (page === 'ranking32') { query = '?stage=32'; title = '🏆 Leaderboard (Round of 32)'; }
+  if (page === 'ranking16') { query = '?stage=16'; title = '🏆 Leaderboard (Round of 16)'; }
+  
+  const res = await apiFetch(\`/api/group/\${currentGroupId}/rank\${query}\`);
   if (res.error) return mainContent.innerHTML = '<p class="error">Error loading ranking</p>';
   
   userPredictionsData = res.userPredictions;
   
-  let html = '<div class="card"><h2>🏆 Leaderboard</h2><div class="table-responsive"><table>';
+  let html = \`<div class="card"><h2>\${title}</h2><div class="table-responsive"><table>\`;
   html += '<thead><tr><th>#</th><th>Name</th><th>Points</th><th title="ทายสกอร์ถูกเป๊ะ (+3)">S &#127919;</th><th title="ทายผลถูก แต่สกอร์ไม่ตรง (+1)">R &#9989;</th><th title="ทายผิดหมด (+0)">X &#10060;</th></tr></thead><tbody>';
 
   

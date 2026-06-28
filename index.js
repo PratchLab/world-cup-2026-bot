@@ -487,6 +487,9 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 
     // --- 5. /rank (Leaderboard) ---
     if (text.startsWith('/rank') || text.startsWith('/leaderboard')) {
+      const isRank32 = text.startsWith('/rank32');
+      const isRank16 = text.startsWith('/rank16');
+
       await getAllMatchesFromSheet();
       const groupId = event.source.groupId || event.source.roomId || event.source.userId;
       const allPredictions = await getLatestPredictions();
@@ -497,6 +500,10 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       predictions.forEach(p => {
         const matchInfo = allFixturesCache.find(m => String(m.matchId) === String(p.matchId));
         if (matchInfo && matchInfo.status === 'FT') {
+          const mId = parseInt(p.matchId);
+          if (isRank32 && mId < 73) return; // Skip matches before Round of 32
+          if (isRank16 && mId < 89) return; // Skip matches before Round of 16
+
           const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
           if (!scores[p.userId]) scores[p.userId] = { displayName: p.displayName, points: 0 };
           scores[p.userId].points += pts;
@@ -506,6 +513,8 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       const sorted = Object.values(scores).sort((a, b) => b.points - a.points);
       
       let replyText = `🏆 ตารางคะแนนเซียนบอลโลก 🏆\n\n`;
+      if (isRank32) replyText = `🏆 ตารางคะแนนเซียนบอลโลก (ตั้งแต่รอบ 32 ทีม) 🏆\n\n`;
+      if (isRank16) replyText = `🏆 ตารางคะแนนเซียนบอลโลก (ตั้งแต่รอบ 16 ทีม) 🏆\n\n`;
       if (sorted.length === 0) {
         replyText += `ยังไม่มีใครได้คะแนนเลยครับ!`;
       } else {
@@ -728,6 +737,8 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/group/:groupId/rank', async (req, res) => {
   const { groupId } = req.params;
+  const stage = req.query.stage;
+  
   try {
     await getAllMatchesFromSheet();
     const allPredictions = await getLatestPredictions();
@@ -738,6 +749,12 @@ app.get('/api/group/:groupId/rank', async (req, res) => {
     
     groupPreds.forEach(p => {
       const matchInfo = allFixturesCache.find(m => String(m.matchId) === String(p.matchId));
+      const mId = parseInt(p.matchId);
+      
+      // Filter predictions based on stage query
+      if (stage === '32' && mId < 73) return;
+      if (stage === '16' && mId < 89) return;
+
       if (!scores[p.userId]) {
         scores[p.userId] = { displayName: p.displayName, points: 0, w: 0, d: 0, l: 0 };
         userPredictions[p.userId] = [];
@@ -764,6 +781,7 @@ app.get('/api/group/:groupId/rank', async (req, res) => {
         status: matchInfo ? matchInfo.status : 'NS',
         homeScore: matchInfo ? matchInfo.homeScore : null,
         awayScore: matchInfo ? matchInfo.awayScore : null
+
       });
     });
     
