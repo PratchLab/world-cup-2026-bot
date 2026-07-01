@@ -129,15 +129,29 @@ function startScheduler(client, sheetsFunctions) {
             
             let replyText = `🏁 จบการแข่งขัน! 🏁\n${getFlag(match.homeTeam)} ${match.homeTeam} ${homeScore} - ${awayScore} ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
             
-            // Goals
+            // Goals and Shootouts
             if (Array.isArray(events)) {
-                const goalEvents = events.filter(e => e.type === 'Goal');
+                const goalEvents = events.filter(e => e.type === 'Goal' && e.comments !== 'Penalty Shootout' && e.detail !== 'Missed Penalty');
+                const shootoutEvents = events.filter(e => e.type === 'Goal' && e.comments === 'Penalty Shootout');
+                
                 if (goalEvents.length > 0) {
                     replyText += `⚽️ ผู้ทำประตู:\n`;
                     goalEvents.forEach(e => {
                         const playerName = e.player?.name || 'Unknown';
                         const teamName = e.team?.name || 'Unknown';
-                        replyText += `- ${e.time?.elapsed || '?'}' ${playerName} (${teamName})\n`;
+                        const minute = e.time?.elapsed + (e.time?.extra ? '+' + e.time.extra : '') + "'";
+                        replyText += `- ${minute} ${playerName} (${teamName})\n`;
+                    });
+                    replyText += `\n`;
+                }
+
+                if (shootoutEvents.length > 0) {
+                    replyText += `🥅 ดวลจุดโทษตัดสิน:\n`;
+                    shootoutEvents.forEach(e => {
+                        const playerName = e.player?.name || 'Unknown';
+                        const teamName = e.team?.name || 'Unknown';
+                        const icon = e.detail === 'Penalty' ? '✅' : '❌';
+                        replyText += `${icon} ${playerName} (${teamName})\n`;
                     });
                     replyText += `\n`;
                 }

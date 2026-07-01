@@ -182,11 +182,12 @@ window.toggleMatchDetail = async function(matchId) {
     awayCoach = data.lineups[1].coach ? data.lineups[1].coach.name : '-';
   }
 
-  // ---- Events: Goals, Cards, Subs ----
-  var goals = [], cards = [], subs = [];
+  // ---- Events: Goals, Cards, Subs, Shootouts ----
+  var goals = [], cards = [], subs = [], shootouts = [];
   if (data.events && data.events.length > 0) {
     data.events.forEach(function(ev) {
-      if (ev.type === 'Goal' && ev.detail !== 'Missed Penalty') goals.push(ev);
+      if (ev.type === 'Goal' && ev.comments !== 'Penalty Shootout' && ev.detail !== 'Missed Penalty') goals.push(ev);
+      else if (ev.type === 'Goal' && ev.comments === 'Penalty Shootout') shootouts.push(ev);
       else if (ev.type === 'Card') cards.push(ev);
       else if (ev.type === 'subst') subs.push(ev);
     });
@@ -206,6 +207,22 @@ window.toggleMatchDetail = async function(matchId) {
         + ' <span style="color:var(--text-muted);font-size:12px">— ' + (g.team ? g.team.name : '') + '</span>'
         + (g.detail === 'Own Goal' ? ' <span style="color:#ef4444;font-size:11px">OG</span>' : '')
         + (g.detail === 'Penalty' ? ' <span style="color:#3b82f6;font-size:11px">PEN</span>' : '')
+        + '</span>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ---- Shootouts Section ----
+  if (shootouts.length > 0) {
+    html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#9917; ดวลจุดโทษ</h4>';
+    html += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
+    shootouts.forEach(function(s) {
+      var icon = s.detail === 'Penalty' ? '&#9989;' : '&#10060;';
+      html += '<div style="display:flex;gap:8px;align-items:center">'
+        + '<span style="color:var(--text-muted);min-width:40px">' + icon + '</span>'
+        + '<span><strong>' + (s.player ? s.player.name : '-') + '</strong>'
+        + ' <span style="color:var(--text-muted);font-size:12px">— ' + (s.team ? s.team.name : '') + '</span>'
         + '</span>'
         + '</div>';
     });
