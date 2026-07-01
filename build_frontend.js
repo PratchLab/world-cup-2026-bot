@@ -358,7 +358,17 @@ window.toggleMatchDetail = async function(matchId) {
 
   // ---- Shootouts Section ----
   if (shootouts.length > 0) {
-    html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#9917; ดวลจุดโทษ</h4>';
+    var homeTeamName = (data.lineups && data.lineups.length > 0 && data.lineups[0].team) ? data.lineups[0].team.name : '';
+    var homePen = 0, awayPen = 0;
+    
+    shootouts.forEach(function(s) {
+      if (s.detail === 'Penalty') {
+        if (s.team && (s.team.name === homeTeamName || homeTeamName.includes(s.team.name))) homePen++;
+        else awayPen++;
+      }
+    });
+
+    html += '<h4 style="margin:12px 0 6px;color:var(--text)">&#9917; ดวลจุดโทษ (' + homePen + ' - ' + awayPen + ')</h4>';
     html += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
     shootouts.forEach(function(s) {
       var icon = s.detail === 'Penalty' ? '&#9989;' : '&#10060;';

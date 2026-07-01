@@ -146,7 +146,15 @@ function startScheduler(client, sheetsFunctions) {
                 }
 
                 if (shootoutEvents.length > 0) {
-                    replyText += `🥅 ดวลจุดโทษตัดสิน:\n`;
+                    let homePen = 0, awayPen = 0;
+                    shootoutEvents.forEach(e => {
+                        if (e.detail === 'Penalty') {
+                            if (e.team?.name === match.homeTeam || match.homeTeam.includes(e.team?.name)) homePen++;
+                            else awayPen++;
+                        }
+                    });
+                    
+                    replyText += `🥅 ดวลจุดโทษตัดสิน: ${match.homeTeam} ${homePen} - ${awayPen} ${match.awayTeam}\n`;
                     shootoutEvents.forEach(e => {
                         const playerName = e.player?.name || 'Unknown';
                         const teamName = e.team?.name || 'Unknown';
