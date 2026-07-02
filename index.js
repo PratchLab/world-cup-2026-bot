@@ -58,7 +58,7 @@ async function getSheetsClient() {
 async function getAllMatchesFromSheet() {
   const sheets = await getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A2:I' });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A2:M' });
   const rows = res.data.values || [];
   
   const matches = rows.map(r => ({
@@ -68,9 +68,13 @@ async function getAllMatchesFromSheet() {
     startTime: r[3],
     stage: r[4],
     status: r[5] || 'NS',
-    homeScore: r[6] ? parseInt(r[6]) : null,
-    awayScore: r[7] ? parseInt(r[7]) : null,
-    apiFixtureId: r[8] ? parseInt(r[8]) : null
+    homeScore: (r[6] && r[6] !== '') ? parseInt(r[6]) : null,
+    awayScore: (r[7] && r[7] !== '') ? parseInt(r[7]) : null,
+    apiFixtureId: (r[8] && r[8] !== '') ? parseInt(r[8]) : null,
+    homeScoreAET: (r[9] && r[9] !== '') ? parseInt(r[9]) : null,
+    awayScoreAET: (r[10] && r[10] !== '') ? parseInt(r[10]) : null,
+    homeScorePEN: (r[11] && r[11] !== '') ? parseInt(r[11]) : null,
+    awayScorePEN: (r[12] && r[12] !== '') ? parseInt(r[12]) : null
   }));
   
   allFixturesCache = matches;
@@ -135,23 +139,34 @@ async function storePrediction(groupId, userId, displayName, matchId, prediction
   });
 }
 
-async function updateMatchResult(matchId, status, homeScore, awayScore) {
+async function updateMatchResult(matchId, status, homeScore, awayScore, homeAET = null, awayAET = null, homePEN = null, awayPEN = null) {
   const sheets = await getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A:H' });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A:I' });
   const rows = res.data.values || [];
   
   const rowIndex = rows.findIndex(r => r[0] === String(matchId));
   if (rowIndex === -1) return;
   
+  const apiFixtureId = rows[rowIndex][8] || '';
   const rowNumber = rowIndex + 1; // +1 for 1-based index (header is row 1)
-  const range = `Matches!F${rowNumber}:H${rowNumber}`;
+  const range = `Matches!F${rowNumber}:M${rowNumber}`;
+  
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range,
     valueInputOption: 'RAW',
     requestBody: {
-      values: [[status, homeScore, awayScore]]
+      values: [[
+        status, 
+        homeScore, 
+        awayScore, 
+        apiFixtureId, 
+        homeAET !== null ? homeAET : '', 
+        awayAET !== null ? awayAET : '', 
+        homePEN !== null ? homePEN : '', 
+        awayPEN !== null ? awayPEN : ''
+      ]]
     }
   });
   

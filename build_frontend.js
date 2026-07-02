@@ -266,15 +266,27 @@ async function renderSchedule() {
       var statusBadge = isPast ? '<span class="badge badge-neutral">FT</span>'
         : isLive ? '<span class="badge badge-success">&#128308; LIVE</span>'
         : '<span class="badge badge-neutral">&#9200; ' + timeStr + '</span>';
-      var score = (isPast || isLive)
+      var scoreHtml = (isPast || isLive)
         ? '<strong style="font-size:18px;min-width:60px;text-align:center">' + (m.homeScore !== null ? m.homeScore : 0) + ' - ' + (m.awayScore !== null ? m.awayScore : 0) + '</strong>'
         : '<span style="color:var(--text-muted);min-width:60px;text-align:center">vs</span>';
+      
+      var extraScores = '';
+      if (m.homeScoreAET !== null && m.awayScoreAET !== null) {
+          extraScores += '<span style="font-size:11px;color:var(--text-muted)">(AET ' + m.homeScoreAET + '-' + m.awayScoreAET + ')</span>';
+      }
+      if (m.homeScorePEN !== null && m.awayScorePEN !== null) {
+          extraScores += '<span style="font-size:11px;color:var(--text-muted)">(PEN ' + m.homeScorePEN + '-' + m.awayScorePEN + ')</span>';
+      }
+      
+      if (extraScores !== '') {
+          scoreHtml = '<div style="display:flex;flex-direction:column;align-items:center;min-width:60px">' + scoreHtml + extraScores + '</div>';
+      }
 
       html += '<div class="match-header" onclick="toggleMatchDetail(\\'' + m.matchId + '\\')" style="cursor:pointer">'
         + '<div style="display:flex;flex-direction:column;gap:4px;flex:1">'
         + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
         + '<span style="min-width:120px;font-weight:600">' + m.homeTeam + '</span>'
-        + score
+        + scoreHtml
         + '<span style="min-width:120px;font-weight:600">' + m.awayTeam + '</span>'
         + '</div>'
         + '<div style="font-size:12px;color:var(--text-muted)">' + timeStr + '</div>'

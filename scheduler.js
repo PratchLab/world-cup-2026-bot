@@ -108,11 +108,18 @@ function startScheduler(client, sheetsFunctions) {
         if (apiStatus === 'FT' || apiStatus === 'PEN' || apiStatus === 'AET') {
             console.log(`[Scheduler] Match ${match.matchId} ended! Processing results...`);
             
-            const homeScore = apiFixture.goals.home;
-            const awayScore = apiFixture.goals.away;
+            // Use fulltime (90 min) score if available, otherwise fallback to total goals
+            const homeScore = (apiFixture.score && apiFixture.score.fulltime && apiFixture.score.fulltime.home !== null) ? apiFixture.score.fulltime.home : apiFixture.goals.home;
+            const awayScore = (apiFixture.score && apiFixture.score.fulltime && apiFixture.score.fulltime.away !== null) ? apiFixture.score.fulltime.away : apiFixture.goals.away;
             
+            const homeAET = (apiFixture.score && apiFixture.score.extratime && apiFixture.score.extratime.home !== null) ? apiFixture.score.extratime.home : null;
+            const awayAET = (apiFixture.score && apiFixture.score.extratime && apiFixture.score.extratime.away !== null) ? apiFixture.score.extratime.away : null;
+            
+            const homePEN = (apiFixture.score && apiFixture.score.penalty && apiFixture.score.penalty.home !== null) ? apiFixture.score.penalty.home : null;
+            const awayPEN = (apiFixture.score && apiFixture.score.penalty && apiFixture.score.penalty.away !== null) ? apiFixture.score.penalty.away : null;
+
             // 1. Update Sheet
-            await updateMatchResult(match.matchId, 'FT', homeScore, awayScore);
+            await updateMatchResult(match.matchId, 'FT', homeScore, awayScore, homeAET, awayAET, homePEN, awayPEN);
             await getAllMatchesFromSheet();
             
             if (groupIds.length === 0) continue;
@@ -127,7 +134,11 @@ function startScheduler(client, sheetsFunctions) {
                 console.error(`Error fetching post-match data for ${match.matchId}:`, err);
             }
             
-            let replyText = `🏁 จบการแข่งขัน! 🏁\n${getFlag(match.homeTeam)} ${match.homeTeam} ${homeScore} - ${awayScore} ${match.awayTeam} ${getFlag(match.awayTeam)}\n\n`;
+            let replyText = `🏁 จบการแข่งขัน! 🏁\n${getFlag(match.homeTeam)} ${match.homeTeam} ${homeScore} - ${awayScore} ${match.awayTeam} ${getFlag(match.awayTeam)} (ในเวลา 90 นาที)\n`;
+            if (homeAET !== null && awayAET !== null) {
+                replyText += `(ต่อเวลาพิเศษ AET: ${homeAET} - ${awayAET})\n`;
+            }
+            replyText += `\n`;
             
             // Goals and Shootouts
             if (Array.isArray(events)) {
@@ -146,15 +157,17 @@ function startScheduler(client, sheetsFunctions) {
                 }
 
                 if (shootoutEvents.length > 0) {
-                    let homePen = 0, awayPen = 0;
-                    shootoutEvents.forEach(e => {
-                        if (e.detail === 'Penalty') {
-                            if (e.team?.name === match.homeTeam || match.homeTeam.includes(e.team?.name)) homePen++;
-                            else awayPen++;
-                        }
-                    });
-                    
-                    replyText += `🥅 ดวลจุดโทษตัดสิน: ${match.homeTeam} ${homePen} - ${awayPen} ${match.awayTeam}\n`;
+                    let hPen = homePEN, aPen = awayPEN;
+                    if (hPen === null || aPen === null) {
+                        hPen = 0; aPen = 0;
+                        shootoutEvents.forEach(e => {
+                            if (e.detail === 'Penalty') {
+                                if (e.team?.name === match.homeTeam || match.homeTeam.includes(e.team?.name)) hPen++;
+                                else aPen++;
+                            }
+                        });
+                    }
+                    replyText += `🥅 ดวลจุดโทษตัดสิน: ${match.homeTeam} ${hPen} - ${aPen} ${match.awayTeam}\n`;
                     shootoutEvents.forEach(e => {
                         const playerName = e.player?.name || 'Unknown';
                         const teamName = e.team?.name || 'Unknown';
