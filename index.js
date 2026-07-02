@@ -485,7 +485,19 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       const predictions = await getLatestPredictions();
       const matchPreds = predictions.filter(p => p.matchId === matchId && p.groupId === groupId);
       
-      let replyText = `📊 สรุปการทายผลทั้งหมดสำหรับคู่:\n${getFlag(matchInfo.homeTeam)} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${getFlag(matchInfo.awayTeam)}\n\n`;
+      let replyText = `📊 สรุปการทายผลทั้งหมดสำหรับคู่:\n`;
+      if (matchInfo.status === 'FT' && matchInfo.homeScore !== null) {
+          replyText += `${getFlag(matchInfo.homeTeam)} ${matchInfo.homeTeam} ${matchInfo.homeScore} - ${matchInfo.awayScore} ${matchInfo.awayTeam} ${getFlag(matchInfo.awayTeam)} (ในเวลา 90 นาที)\n`;
+          if (matchInfo.homeScoreAET !== null && matchInfo.awayScoreAET !== null) {
+              replyText += `(ต่อเวลาพิเศษ AET: ${matchInfo.homeScoreAET} - ${matchInfo.awayScoreAET})\n`;
+          }
+          if (matchInfo.homeScorePEN !== null && matchInfo.awayScorePEN !== null) {
+              replyText += `(จุดโทษ PEN: ${matchInfo.homeScorePEN} - ${matchInfo.awayScorePEN})\n`;
+          }
+          replyText += `\n`;
+      } else {
+          replyText += `${getFlag(matchInfo.homeTeam)} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${getFlag(matchInfo.awayTeam)}\n\n`;
+      }
       if (matchPreds.length === 0) {
         replyText += `ยังไม่มีใครกล้าฟันธงคู่นี้เลยครับ!`;
       } else {
