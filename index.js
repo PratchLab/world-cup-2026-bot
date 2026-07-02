@@ -443,26 +443,41 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         continue;
       }
 
-      let replyText = `📜 ประวัติทายผลล่าสุดของคุณ:\n\n`;
+      let messages = [];
+      let currentText = `📜 ประวัติทายผลล่าสุดของคุณ:\n\n`;
       let totalPts = 0;
       for (const p of myPreds) {
         const matchInfo = allFixturesCache.find(m => m.matchId === p.matchId);
         if (!matchInfo) continue;
         const hFlag = getFlag(matchInfo.homeTeam);
         const aFlag = getFlag(matchInfo.awayTeam);
-        replyText += `⚽️ ${hFlag} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${aFlag}\n`;
-        replyText += `ทายว่า: ${p.prediction} (${p.outcome})\n`;
+        
+        let chunk = `⚽️ ${hFlag} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${aFlag}\n`;
+        chunk += `ทายว่า: ${p.prediction} (${p.outcome})\n`;
         
         if (matchInfo.status === 'FT') {
           const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
           totalPts += pts;
-          replyText += `[จบเกม: ${matchInfo.homeScore}-${matchInfo.awayScore}] 👉 ได้ ${pts} คะแนน!\n\n`;
+          chunk += `[จบเกม: ${matchInfo.homeScore}-${matchInfo.awayScore}] 👉 ได้ ${pts} คะแนน!\n\n`;
         } else {
-          replyText += `[ยังไม่แข่ง]\n\n`;
+          chunk += `[ยังไม่แข่ง]\n\n`;
         }
+        
+        if (currentText.length + chunk.length > 4000) {
+            messages.push({ type: 'text', text: currentText.trim() });
+            currentText = '';
+        }
+        currentText += chunk;
       }
-      replyText += `🏆 คะแนนรวมของคุณตอนนี้: ${totalPts} แต้ม!`;
-      await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: replyText}] });
+      currentText += `🏆 คะแนนรวมของคุณตอนนี้: ${totalPts} แต้ม!`;
+      messages.push({ type: 'text', text: currentText.trim() });
+      
+      // LINE allows max 5 message objects per reply. Keep the last 5 if exceeding (to show newest matches & total points).
+      if (messages.length > 5) {
+          messages = messages.slice(-5);
+      }
+      
+      await client.replyMessage({ replyToken: event.replyToken, messages });
       continue;
     }
 
