@@ -580,6 +580,98 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       continue;
     }
 
+    // --- 5.5 /stats (Prediction Stats) ---
+    if (text.startsWith('/stats')) {
+      if (allFixturesCache.length === 0) await getAllMatchesFromSheet();
+      const groupId = event.source.groupId || event.source.roomId || event.source.userId;
+      const allPredictions = await getLatestPredictions();
+      const predictions = allPredictions.filter(p => p.groupId === groupId);
+      
+      const matchStats = {};
+      predictions.forEach(p => {
+        const matchInfo = allFixturesCache.find(m => String(m.matchId) === String(p.matchId));
+        if (matchInfo && matchInfo.status === 'FT') {
+          const mId = parseInt(p.matchId);
+          if (!matchStats[mId]) {
+             matchStats[mId] = { matchInfo, total: 0, zero: 0, three: 0, predictors: [] };
+          }
+          const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
+          matchStats[mId].total++;
+          if (pts === 0) matchStats[mId].zero++;
+          if (pts === 3) matchStats[mId].three++;
+          matchStats[mId].predictors.push({ name: p.displayName, pred: p.prediction, pts });
+        }
+      });
+      
+      const statsList = Object.values(matchStats).filter(s => s.total >= 2);
+      
+      if (statsList.length === 0) {
+          await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: 'ยังไม่มีข้อมูลสถิติที่น่าสนใจครับ (ต้องมีคนทายคู่เดียวกันอย่างน้อย 2 คนและแข่งจบแล้ว)'}] });
+          continue;
+      }
+      
+      // 1. ผ้าป่าคว่ำ: Most zeros, ideally zero === total
+      let worst = [...statsList].sort((a,b) => {
+          const aRatio = a.zero / a.total;
+          const bRatio = b.zero / b.total;
+          if (bRatio !== aRatio) return bRatio - aRatio;
+          return b.total - a.total;
+      })[0];
+      
+      // 2. สามัคคีคือพลัง: Zero === 0, most total
+      let best = [...statsList].filter(s => s.zero === 0 && s !== worst).sort((a,b) => b.total - a.total)[0];
+      
+      // 3. ตาทิพย์: Most threes
+      let exact = [...statsList].filter(s => s !== worst && s !== best).sort((a,b) => b.three - a.three || b.total - a.total)[0];
+      
+      let messages = [];
+      let currentText = `🏆 สรุปสถิติสุดพีคประจำกลุ่ม! 📊\n\n`;
+      
+      const addChunk = (chunk) => {
+          if (currentText.length + chunk.length > 4000) {
+              messages.push({ type: 'text', text: currentText.trim() });
+              currentText = '';
+          }
+          currentText += chunk;
+      };
+      
+      if (worst && worst.zero > 0) {
+         const m = worst.matchInfo;
+         let chunk = `☠️ รางวัล "ผ้าป่าคว่ำ" (เดาผิดกันเยอะสุด!):\n`;
+         chunk += `${getFlag(m.homeTeam)} ${m.homeTeam} ${m.homeScore} - ${m.awayScore} ${m.awayTeam} ${getFlag(m.awayTeam)}\n`;
+         chunk += `(มีคนทายผิด 0 แต้ม ถึง ${worst.zero} คน! 😭)\n`;
+         worst.predictors.forEach(p => { chunk += `- ${p.name} ทาย: ${p.pred} (${p.pts} แต้ม)\n`; });
+         chunk += `\n`;
+         addChunk(chunk);
+      }
+      
+      if (best && best.total > 0) {
+         const m = best.matchInfo;
+         let chunk = `🤝 รางวัล "สามัคคีคือพลัง" (รับแต้มถ้วนหน้า!):\n`;
+         chunk += `${getFlag(m.homeTeam)} ${m.homeTeam} ${m.homeScore} - ${m.awayScore} ${m.awayTeam} ${getFlag(m.awayTeam)}\n`;
+         chunk += `(เอกฉันท์สุดๆ กอดคอกันบวกแต้ม 🎉)\n`;
+         best.predictors.forEach(p => { chunk += `- ${p.name} ทาย: ${p.pred} (${p.pts} แต้ม)\n`; });
+         chunk += `\n`;
+         addChunk(chunk);
+      }
+      
+      if (exact && exact.three > 0) {
+         const m = exact.matchInfo;
+         let chunk = `🎯 รางวัล "ตาทิพย์" (เดาสกอร์เป๊ะ 3 แต้มเยอะสุด!):\n`;
+         chunk += `${getFlag(m.homeTeam)} ${m.homeTeam} ${m.homeScore} - ${m.awayScore} ${m.awayTeam} ${getFlag(m.awayTeam)}\n`;
+         chunk += `(แม่นเว่อร์! ได้ 3 แต้มเต็มกันเพียบ)\n`;
+         exact.predictors.forEach(p => { chunk += `- ${p.name} ทาย: ${p.pred} (${p.pts} แต้ม)\n`; });
+         chunk += `\n`;
+         addChunk(chunk);
+      }
+      
+      messages.push({ type: 'text', text: currentText.trim() });
+      if (messages.length > 5) messages = messages.slice(0, 5); // Fallback limit
+      
+      await client.replyMessage({ replyToken: event.replyToken, messages });
+      continue;
+    }
+
     // --- 6. /schedule ---
     if (text.startsWith('/schedule')) {
       if (allFixturesCache.length === 0) await getAllMatchesFromSheet();
