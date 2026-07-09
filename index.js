@@ -88,7 +88,7 @@ async function getLatestPredictions() {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   let rows = [];
   try {
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Predictions!A:G' });
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Predictions!A:I' });
     rows = res.data.values || [];
   } catch (e) {
     console.error('Error reading predictions sheet', e);
@@ -98,23 +98,45 @@ async function getLatestPredictions() {
   const map = {};
   for (const row of rows) {
     if (row.length < 7) continue;
-    const [ts, groupId, userId, displayName, matchId, prediction, outcome] = row;
+    const [ts, groupId, userId, displayName, matchId, prediction, outcome, predAET = '', predPEN = ''] = row;
     const key = `${groupId}_${userId}_${matchId}`;
     if (!map[key] || new Date(ts) > new Date(map[key].ts)) {
-      map[key] = { ts, groupId, userId, displayName, matchId, prediction, outcome };
+      map[key] = { ts, groupId, userId, displayName, matchId, prediction, outcome, predAET, predPEN };
     }
   }
   return Object.values(map);
 }
 
 // Calculate points
-function calculatePoints(predScore, predOutcome, actualHome, actualAway) {
-  if (actualHome === null || actualAway === null || actualHome === undefined) return 0;
+function calculatePoints(predScore, predOutcome, actualHome, actualAway, matchInfo = null, predAET = '', predPEN = '') {
+  if (actualHome === null || actualAway === null || actualHome === undefined) {
+      return { total: 0, pts90: 0, ptsAET: 0, ptsPEN: 0 };
+  }
   const actualScoreStr = `${actualHome}-${actualAway}`;
   const actualOutcome = actualHome > actualAway ? 'W' : actualHome === actualAway ? 'D' : 'L';
-  if (predScore === actualScoreStr) return 3;
-  if (predOutcome === actualOutcome) return 1;
-  return 0;
+  
+  let pts90 = 0;
+  if (predScore === actualScoreStr) pts90 += 3;
+  if (predOutcome === actualOutcome) pts90 += 1;
+  
+  let ptsAET = 0;
+  if (matchInfo && matchInfo.homeScoreAET !== null && matchInfo.awayScoreAET !== null && predAET) {
+      const actAETOutcome = matchInfo.homeScoreAET > matchInfo.awayScoreAET ? 'W' : matchInfo.homeScoreAET === matchInfo.awayScoreAET ? 'D' : 'L';
+      if (predAET === actAETOutcome) ptsAET += 1;
+  }
+  
+  let ptsPEN = 0;
+  if (matchInfo && matchInfo.homeScorePEN !== null && matchInfo.awayScorePEN !== null && predPEN) {
+      const actPENOutcome = matchInfo.homeScorePEN > matchInfo.awayScorePEN ? 'W' : matchInfo.homeScorePEN === matchInfo.awayScorePEN ? 'D' : 'L';
+      if (predPEN === actPENOutcome) ptsPEN += 1;
+  }
+  
+  return {
+      total: pts90 + ptsAET + ptsPEN,
+      pts90,
+      ptsAET,
+      ptsPEN
+  };
 }
 
 // Helper: store matches to sheet
@@ -130,12 +152,12 @@ async function storeMatchesToSheet(matches) {
 }
 
 // Helper: write prediction to sheet
-async function storePrediction(groupId, userId, displayName, matchId, prediction, outcome) {
+async function storePrediction(groupId, userId, displayName, matchId, prediction, outcome, predAET = '', predPEN = '') {
   const sheets = await getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   await sheets.spreadsheets.values.append({
-    spreadsheetId, range: 'Predictions!A:G', valueInputOption: 'RAW',
-    requestBody: { values: [[new Date().toISOString(), groupId, userId, displayName, matchId, prediction, outcome]] },
+    spreadsheetId, range: 'Predictions!A:I', valueInputOption: 'RAW',
+    requestBody: { values: [[new Date().toISOString(), groupId, userId, displayName, matchId, prediction, outcome, predAET, predPEN]] },
   });
 }
 
@@ -176,14 +198,26 @@ async function updateMatchResult(matchId, status, homeScore, awayScore, homeAET 
 
 function parsePrediction(text) {
   const parts = text.trim().split(/\s+/);
-  if (parts.length !== 2) return null;
+  if (parts.length < 2 || parts.length > 4) return null;
   const score = parts[0].split('-');
   if (score.length !== 2) return null;
   const home = parseInt(score[0], 10);
   const away = parseInt(score[1], 10);
   const outcome = parts[1].toUpperCase();
   if (isNaN(home) || isNaN(away) || !['W','D','L'].includes(outcome)) return null;
-  return {home, away, outcome};
+  
+  let outcomeAET = '';
+  let outcomePEN = '';
+  if (parts.length >= 3) {
+      outcomeAET = parts[2].toUpperCase();
+      if (!['W','D','L'].includes(outcomeAET)) return null;
+  }
+  if (parts.length === 4) {
+      outcomePEN = parts[3].toUpperCase();
+      if (!['W','L'].includes(outcomePEN)) return null; // PEN cannot be Draw
+  }
+  
+  return {home, away, outcome, outcomeAET, outcomePEN};
 }
 
 // HELP MESSAGE
@@ -377,14 +411,14 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
     // --- 2. /guess ---
     if (text.startsWith('/guess')) {
       const tokens = text.split(/\s+/);
-      if (tokens.length !== 4) {
-        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบผิดครับ\nตัวอย่าง: /guess 9001 2-1 W`}] });
+      if (tokens.length < 4 || tokens.length > 6) {
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบผิดครับ\nตัวอย่าง: /guess 9001 2-1 W\nหรือถ้ามีต่อเวลา: /guess 9001 1-1 D D W`}] });
         continue;
       }
       const matchId = tokens[1];
-      const pred = parsePrediction(`${tokens[2]} ${tokens[3]}`);
+      const pred = parsePrediction(tokens.slice(2).join(' '));
       if (!pred) {
-        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบสกอร์หรือผลผิดครับ (W=เจ้าบ้านชนะ, D=เสมอ, L=เยือนชนะ)\nตัวอย่าง: /guess 9001 2-1 W`}] });
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบสกอร์หรือผลผิดครับ (W=เจ้าบ้านชนะ, D=เสมอ, L=เยือนชนะ)\nจุดโทษห้ามทายเสมอ (D)\nตัวอย่าง: /guess 9001 1-1 D D W`}] });
         continue;
       }
 
@@ -418,12 +452,16 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         } catch (e) {
           console.error("Profile fetch error:", e.message);
         }
-        await storePrediction(groupId, userId, displayName, matchId, `${pred.home}-${pred.away}`, pred.outcome);
+        await storePrediction(groupId, userId, displayName, matchId, `${pred.home}-${pred.away}`, pred.outcome, pred.outcomeAET, pred.outcomePEN);
         
         const hFlag = getFlag(matchInfo.homeTeam);
         const aFlag = getFlag(matchInfo.awayTeam);
         const teamOutcome = pred.outcome === 'W' ? `${matchInfo.homeTeam} ชนะ` : pred.outcome === 'D' ? 'เสมอ' : `${matchInfo.awayTeam} ชนะ`;
-        const replyText = `✅ บันทึกทายผลสำเร็จ!\n\n${hFlag} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${aFlag}\nสกอร์ที่ทาย: ${pred.home} - ${pred.away}\nฟันธง: ${teamOutcome}\n\n⚠️ คุณสามารถทายแก้ตัวได้เรื่อยๆ จนกว่าบอลจะเตะนะครับ! (เรานับเฉพาะครั้งล่าสุด)\nขอให้โชคดีนะ ${displayName}! 🔴⚪`;
+        
+        let replyText = `✅ บันทึกทายผลสำเร็จ!\n\n${hFlag} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${aFlag}\nสกอร์ที่ทาย: ${pred.home} - ${pred.away}\nฟันธง: ${teamOutcome}`;
+        if (pred.outcomeAET) replyText += `\nต่อเวลา AET: ${pred.outcomeAET === 'W' ? matchInfo.homeTeam + ' ชนะ' : pred.outcomeAET === 'L' ? matchInfo.awayTeam + ' ชนะ' : 'เสมอ'}`;
+        if (pred.outcomePEN) replyText += `\nจุดโทษ PEN: ${pred.outcomePEN === 'W' ? matchInfo.homeTeam + ' ชนะ' : matchInfo.awayTeam + ' ชนะ'}`;
+        replyText += `\n\n⚠️ คุณสามารถทายแก้ตัวได้เรื่อยๆ จนกว่าบอลจะเตะนะครับ! (เรานับเฉพาะครั้งล่าสุด)\nขอให้โชคดีนะ ${displayName}! 🔴⚪`;
         
         await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: replyText}] });
       } catch (err) {
@@ -453,12 +491,25 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         const aFlag = getFlag(matchInfo.awayTeam);
         
         let chunk = `⚽️ ${hFlag} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${aFlag}\n`;
-        chunk += `ทายว่า: ${p.prediction} (${p.outcome})\n`;
+        let guessStr = `${p.prediction} (${p.outcome})`;
+        if (p.predAET) guessStr += ` AET:${p.predAET}`;
+        if (p.predPEN) guessStr += ` PEN:${p.predPEN}`;
+        chunk += `ทายว่า: ${guessStr}\n`;
         
         if (matchInfo.status === 'FT') {
-          const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+          const pts = ptsObj.total;
           totalPts += pts;
-          chunk += `[จบเกม: ${matchInfo.homeScore}-${matchInfo.awayScore}] 👉 ได้ ${pts} คะแนน!\n\n`;
+          
+          let actStr = `${matchInfo.homeScore}-${matchInfo.awayScore}`;
+          if (matchInfo.homeScoreAET !== null) actStr += ` (AET ${matchInfo.homeScoreAET}-${matchInfo.awayScoreAET})`;
+          if (matchInfo.homeScorePEN !== null) actStr += ` (PEN ${matchInfo.homeScorePEN}-${matchInfo.awayScorePEN})`;
+          
+          chunk += `[จบเกม: ${actStr}] 👉 ได้ ${pts} แต้ม!`;
+          if (matchInfo.homeScoreAET !== null || matchInfo.homeScorePEN !== null) {
+              chunk += ` (90m: ${ptsObj.pts90}, AET: ${ptsObj.ptsAET}, PEN: ${ptsObj.ptsPEN})`;
+          }
+          chunk += `\n\n`;
         } else {
           chunk += `[ยังไม่แข่ง]\n\n`;
         }
@@ -518,11 +569,17 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
       } else {
         matchPreds.forEach(p => {
           let pointsText = '';
+          let guessStr = `${p.prediction} (${p.outcome})`;
+          if (p.predAET) guessStr += ` AET:${p.predAET}`;
+          if (p.predPEN) guessStr += ` PEN:${p.predPEN}`;
           if (matchInfo.status === 'FT') {
-             const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
-             pointsText = ` 👉 ได้ ${pts} แต้ม!`;
+             const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+             pointsText = ` 👉 ได้ ${ptsObj.total} แต้ม!`;
+             if (matchInfo.homeScoreAET !== null || matchInfo.homeScorePEN !== null) {
+                 pointsText += ` (90m:${ptsObj.pts90}, AET:${ptsObj.ptsAET}, PEN:${ptsObj.ptsPEN})`;
+             }
           }
-          replyText += `👤 ${p.displayName} ทายว่า: ${p.prediction} (${p.outcome})${pointsText}\n`;
+          replyText += `👤 ${p.displayName} ทายว่า: ${guessStr}${pointsText}\n`;
         });
       }
       await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: replyText}] });
@@ -548,7 +605,8 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           if (isRank32 && mId < 73) return; // Skip matches before Round of 32
           if (isRank16 && mId < 89) return; // Skip matches before Round of 16
 
-          const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+          const pts = ptsObj.total;
           if (!scores[p.userId]) scores[p.userId] = { displayName: p.displayName, points: 0 };
           scores[p.userId].points += pts;
         }
@@ -595,10 +653,11 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           if (!matchStats[mId]) {
              matchStats[mId] = { matchInfo, total: 0, zero: 0, three: 0, predictors: [] };
           }
-          const pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+          const pts = ptsObj.total;
           matchStats[mId].total++;
           if (pts === 0) matchStats[mId].zero++;
-          if (pts === 3) matchStats[mId].three++;
+          if (pts >= 3) matchStats[mId].three++;
           matchStats[mId].predictors.push({ name: p.displayName, pred: p.prediction, pts });
         }
       });
@@ -898,9 +957,10 @@ app.get('/api/group/:groupId/rank', async (req, res) => {
       
       let pts = 0;
       if (matchInfo && matchInfo.status === 'FT') {
-        pts = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore);
+        const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+        pts = ptsObj.total;
         scores[p.userId].points += pts;
-        if (pts === 3) scores[p.userId].w++;
+        if (pts >= 3) scores[p.userId].w++;
         else if (pts === 1) scores[p.userId].d++;
         else scores[p.userId].l++;
       }
@@ -987,9 +1047,10 @@ app.get('/api/group/:groupId/match/:matchId/details', async (req, res) => {
       .map(p => {
         let pts = null;
         if (match && match.status === 'FT') {
-          pts = calculatePoints(p.prediction, p.outcome, match.homeScore, match.awayScore);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, match.homeScore, match.awayScore, match, p.predAET, p.predPEN);
+          pts = ptsObj.total;
         }
-        return { displayName: p.displayName, prediction: p.prediction, outcome: p.outcome, points: pts };
+        return { displayName: p.displayName, prediction: p.prediction, outcome: p.outcome, predAET: p.predAET, predPEN: p.predPEN, points: pts };
       });
     
     res.json({ match, lineups, events, predictions: matchPredictions });

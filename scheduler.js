@@ -195,9 +195,17 @@ function startScheduler(client, sheetsFunctions) {
                 let hasGuesser = false;
                 for (const p of groupPreds) {
                     hasGuesser = true;
-                    const pts = calculatePoints(p.prediction, p.outcome, homeScore, awayScore);
-                    let resultStr = pts === 3 ? 'ทายถูกเป๊ะ! (3 แต้ม)' : pts === 1 ? 'ทายผลถูก (1 แต้ม)' : 'ทายผิด (0 แต้ม)';
-                    groupReplyText += `- คุณ ${p.displayName} 👉 ${resultStr}\n`;
+                    const ptsObj = calculatePoints(p.prediction, p.outcome, homeScore, awayScore, match, p.predAET, p.predPEN);
+                    const pts = ptsObj.total;
+                    let resultStr = `ได้ ${pts} แต้ม`;
+                    if (match.homeScoreAET !== null || match.homeScorePEN !== null) {
+                        resultStr += ` (90m:${ptsObj.pts90}, AET:${ptsObj.ptsAET}, PEN:${ptsObj.ptsPEN})`;
+                    }
+                    
+                    let guessStr = `${p.prediction} (${p.outcome})`;
+                    if (p.predAET) guessStr += ` AET:${p.predAET}`;
+                    if (p.predPEN) guessStr += ` PEN:${p.predPEN}`;
+                    groupReplyText += `- คุณ ${p.displayName} ทายว่า ${guessStr} 👉 ${resultStr}\n`;
                 }
                 
                 if (!hasGuesser) {
