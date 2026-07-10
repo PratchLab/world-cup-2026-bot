@@ -116,8 +116,11 @@ function calculatePoints(predScore, predOutcome, actualHome, actualAway, matchIn
   const actualOutcome = actualHome > actualAway ? 'W' : actualHome === actualAway ? 'D' : 'L';
   
   let pts90 = 0;
-  if (predScore === actualScoreStr) pts90 += 3;
-  if (predOutcome === actualOutcome) pts90 += 1;
+  if (predScore === actualScoreStr) {
+      pts90 = 3;
+  } else if (predOutcome === actualOutcome) {
+      pts90 = 1;
+  }
   
   let ptsAET = 0;
   if (matchInfo && matchInfo.homeScoreAET !== null && matchInfo.awayScoreAET !== null && predAET) {
@@ -237,6 +240,7 @@ const helpMsg = `⚽️ สวัสดี! เราคือ "ว.ค. 26" บ
 🔟 /rank - ดูตารางคะแนนรวม แข่งความเป็นเซียน!
 🆕 /rank32 - ตารางคะแนนเซียน (นับเฉพาะตั้งแต่รอบ 32 ทีม)
 🆕 /rank16 - ตารางคะแนนเซียน (นับเฉพาะตั้งแต่รอบ 16 ทีม)
+🆕 /history - ดูประวัติการทายและคะแนนสะสมตั้งแต่คู่แรก
 🌐 /portal (หรือ /web) - ดู URL และรหัสผ่านเพื่อเข้าหน้า Web Portal ของกลุ่มเรา
 *️⃣ /setup - ดึง Group ID ของกลุ่มนี้เพื่อรับแจ้งเตือนอัตโนมัติ
 
@@ -635,6 +639,81 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         });
       }
       await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: replyText}] });
+      continue;
+    }
+
+    // --- 5.4 /history (Chronological Match History) ---
+    if (text.startsWith('/history') || text.startsWith('/timeline')) {
+      await getAllMatchesFromSheet();
+      const groupId = event.source.groupId || event.source.roomId || event.source.userId;
+      const allPredictions = await getLatestPredictions();
+      const predictions = allPredictions.filter(p => p.groupId === groupId);
+
+      // Filter matches that are finished and sort by start time ascending
+      const finishedMatches = allFixturesCache.filter(m => m.status === 'FT').sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+      
+      if (finishedMatches.length === 0) {
+          await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: 'ยังไม่มีคู่ไหนแข่งจบเลยครับ'}] });
+          continue;
+      }
+
+      let cumulativeScores = {};
+      let matchMessages = [];
+      
+      finishedMatches.forEach((matchInfo, index) => {
+          let matchPreds = predictions.filter(p => String(p.matchId) === String(matchInfo.matchId));
+          if (matchPreds.length === 0) return; // Skip matches with no predictions
+          
+          let actStr = `${matchInfo.homeScore}-${matchInfo.awayScore}`;
+          if (matchInfo.homeScoreAET !== null) actStr += ` (AET ${matchInfo.homeScoreAET}-${matchInfo.awayScoreAET})`;
+          if (matchInfo.homeScorePEN !== null) actStr += ` (PEN ${matchInfo.homeScorePEN}-${matchInfo.awayScorePEN})`;
+          
+          let chunk = `⚽️ คู่ที่ ${index + 1}: ${getFlag(matchInfo.homeTeam)} ${matchInfo.homeTeam} ${actStr} ${matchInfo.awayTeam} ${getFlag(matchInfo.awayTeam)}\n`;
+          
+          matchPreds.forEach(p => {
+              if (!cumulativeScores[p.userId]) cumulativeScores[p.userId] = { displayName: p.displayName, points: 0 };
+              
+              const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+              const pts = ptsObj.total;
+              cumulativeScores[p.userId].points += pts;
+              
+              let guessStr = `${p.prediction} (${p.outcome})`;
+              if (p.predAET) guessStr += ` AET:${p.predAET}`;
+              if (p.predPEN) guessStr += ` PEN:${p.predPEN}`;
+              
+              chunk += `- คุณ ${p.displayName} ทาย ${guessStr} 👉 ได้ ${pts} แต้ม (รวม: ${cumulativeScores[p.userId].points})\n`;
+          });
+          
+          matchMessages.push(chunk.trim());
+      });
+      
+      if (matchMessages.length === 0) {
+          await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: 'ยังไม่มีใครทายผลในคู่ที่แข่งจบเลยครับ'}] });
+          continue;
+      }
+
+      // Chunk messages for LINE limits (max 5 bubbles, max 5000 chars per bubble)
+      let outMessages = [];
+      let currentBubble = `📜 ประวัติการแข่งและคะแนนสะสม:\n\n`;
+      
+      matchMessages.forEach(msg => {
+          if (currentBubble.length + msg.length + 5 > 4000) {
+              outMessages.push({ type: 'text', text: currentBubble.trim() });
+              currentBubble = msg + '\n\n';
+          } else {
+              currentBubble += msg + '\n\n';
+          }
+      });
+      if (currentBubble.trim()) {
+          outMessages.push({ type: 'text', text: currentBubble.trim() });
+      }
+      
+      // If exceeds 5 bubbles, take only the last 5
+      if (outMessages.length > 5) {
+          outMessages = outMessages.slice(-5);
+      }
+      
+      await client.replyMessage({ replyToken: event.replyToken, messages: outMessages });
       continue;
     }
 
