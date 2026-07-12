@@ -321,12 +321,18 @@ window.toggleMatchDetail = async function(matchId) {
       + '<th>ชื่อ</th><th>ทาย</th><th>คะแนน</th>'
       + '</tr></thead><tbody>';
     data.predictions.forEach(function(p) {
-      var ptsBadge = p.points === 3 ? '<span style="color:#10b981;font-weight:700">+3 &#127919;</span>'
-        : p.points === 1 ? '<span style="color:#f59e0b;font-weight:700">+1 &#9989;</span>'
+      var ptsBadge = p.points >= 3 ? '<span style="color:#10b981;font-weight:700">+' + p.points + ' &#127919;</span>'
+        : p.points >= 1 ? '<span style="color:#f59e0b;font-weight:700">+' + p.points + ' &#9989;</span>'
         : p.points === 0 && p.outcome !== null ? '<span style="color:#64748b">0 &#10060;</span>'
         : '<span style="color:var(--text-muted)">รอผล</span>';
+        
+      var predText = p.prediction || '-';
+      if (p.outcome) predText += ' (' + p.outcome + ')';
+      if (p.predAET) predText += '<br><span style="font-size:11px;color:var(--text-muted)">AET: ' + p.predAET + '</span>';
+      if (p.predPEN) predText += '<br><span style="font-size:11px;color:var(--text-muted)">PEN: ' + p.predPEN + '</span>';
+      
       html += '<tr><td><strong>' + p.displayName + '</strong></td>'
-        + '<td>' + (p.prediction || '-') + '</td>'
+        + '<td>' + predText + '</td>'
         + '<td>' + ptsBadge + '</td>'
         + '</tr>';
     });
