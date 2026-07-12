@@ -115,23 +115,31 @@ function calculatePoints(predScore, predOutcome, actualHome, actualAway, matchIn
   const actualScoreStr = `${actualHome}-${actualAway}`;
   const actualOutcome = actualHome > actualAway ? 'W' : actualHome === actualAway ? 'D' : 'L';
   
+  let multiplier = 1;
+  if (matchInfo && matchInfo.matchId) {
+      const mId = parseInt(matchInfo.matchId, 10);
+      if (mId >= 101 && mId <= 104) {
+          multiplier = 2;
+      }
+  }
+
   let pts90 = 0;
   if (predScore === actualScoreStr) {
-      pts90 = 3;
+      pts90 = 3 * multiplier;
   } else if (predOutcome === actualOutcome) {
-      pts90 = 1;
+      pts90 = 1 * multiplier;
   }
   
   let ptsAET = 0;
   if (matchInfo && matchInfo.homeScoreAET !== null && matchInfo.awayScoreAET !== null && predAET) {
       const actAETOutcome = matchInfo.homeScoreAET > matchInfo.awayScoreAET ? 'W' : matchInfo.homeScoreAET === matchInfo.awayScoreAET ? 'D' : 'L';
-      if (predAET === actAETOutcome) ptsAET += 1;
+      if (predAET === actAETOutcome) ptsAET += 1 * multiplier;
   }
   
   let ptsPEN = 0;
   if (matchInfo && matchInfo.homeScorePEN !== null && matchInfo.awayScorePEN !== null && predPEN) {
       const actPENOutcome = matchInfo.homeScorePEN > matchInfo.awayScorePEN ? 'W' : matchInfo.homeScorePEN === matchInfo.awayScorePEN ? 'D' : 'L';
-      if (predPEN === actPENOutcome) ptsPEN += 1;
+      if (predPEN === actPENOutcome) ptsPEN += 1 * multiplier;
   }
   
   return {
