@@ -82,6 +82,29 @@ async function getAllMatchesFromSheet() {
   return matches;
 }
 
+// Fetch dynamic active group IDs from both Sheets and Env
+async function getActiveGroupIds() {
+  let allGroupIds = [];
+  try {
+    const sheets = await getSheetsClient();
+    const groupsRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: 'Groups!A2:A'
+    });
+    const sheetGroupIds = (groupsRes.data.values || []).map(row => row[0]).filter(Boolean);
+    
+    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
+    const envGroupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
+    
+    allGroupIds = [...new Set([...sheetGroupIds, ...envGroupIds])];
+  } catch (e) {
+    console.error("Error fetching active group IDs:", e.message);
+    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
+    allGroupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return allGroupIds;
+}
+
 // Read predictions from sheet
 async function getLatestPredictions() {
   const sheets = await getSheetsClient();
@@ -1160,6 +1183,7 @@ app.listen(port, async () => {
     getLatestPredictions,
     calculatePoints,
     updateMatchResult,
-    getAllFixturesCache: () => allFixturesCache
+    getAllFixturesCache: () => allFixturesCache,
+    getActiveGroupIds
   });
 });

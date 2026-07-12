@@ -6,15 +6,14 @@ const lineupSentCache = new Set();
 const lineupLastChecked = {};
 const reminderSentCache = new Set();
 function startScheduler(client, sheetsFunctions) {
-  const { getAllMatchesFromSheet, getLatestPredictions, calculatePoints, updateMatchResult, getAllFixturesCache } = sheetsFunctions;
+  const { getAllMatchesFromSheet, getLatestPredictions, calculatePoints, updateMatchResult, getAllFixturesCache, getActiveGroupIds } = sheetsFunctions;
 
   // Initialize API cache
   fetchAllApiFixtures();
 
   // 1. Pre-Match Cron: Runs every minute
   cron.schedule('* * * * *', async () => {
-    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
-    const groupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
+    const groupIds = await getActiveGroupIds();
     if (groupIds.length === 0) return;
 
     const matches = getAllFixturesCache();
@@ -84,8 +83,7 @@ function startScheduler(client, sheetsFunctions) {
 
   // 2. Post-Match Polling: Runs every 5 minutes
   cron.schedule('*/5 * * * *', async () => {
-    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
-    const groupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
+    const groupIds = await getActiveGroupIds();
     
     const matches = getAllFixturesCache();
     const now = new Date();
@@ -229,8 +227,7 @@ function startScheduler(client, sheetsFunctions) {
   });
   // 3. Daily News Summary (08:00 and 18:00 Thailand time -> 01:00 and 11:00 UTC)
   cron.schedule('0 1,11 * * *', async () => {
-    const envIds = process.env.LINE_GROUP_IDS || process.env.LINE_GROUP_ID || '';
-    const groupIds = envIds.split(',').map(s => s.trim()).filter(Boolean);
+    const groupIds = await getActiveGroupIds();
     if (groupIds.length === 0) return;
 
     try {
