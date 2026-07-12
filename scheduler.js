@@ -188,6 +188,8 @@ function startScheduler(client, sheetsFunctions) {
             // 3. Calculate Predictions and Send per Group
             const allPreds = await getLatestPredictions();
             
+            const updatedMatch = getAllFixturesCache().find(m => String(m.matchId) === String(match.matchId)) || match;
+
             for (const groupId of groupIds) {
                 let groupReplyText = replyText + `--- 🏆 สรุปคะแนนการทายผลคู่นี้ ---\n`;
                 const groupPreds = allPreds.filter(p => p.groupId === groupId && String(p.matchId) === String(match.matchId));
@@ -195,10 +197,10 @@ function startScheduler(client, sheetsFunctions) {
                 let hasGuesser = false;
                 for (const p of groupPreds) {
                     hasGuesser = true;
-                    const ptsObj = calculatePoints(p.prediction, p.outcome, homeScore, awayScore, match, p.predAET, p.predPEN);
+                    const ptsObj = calculatePoints(p.prediction, p.outcome, homeScore, awayScore, updatedMatch, p.predAET, p.predPEN);
                     const pts = ptsObj.total;
                     let resultStr = `ได้ ${pts} แต้ม`;
-                    if (match.homeScoreAET !== null || match.homeScorePEN !== null) {
+                    if (updatedMatch.homeScoreAET !== null || updatedMatch.homeScorePEN !== null) {
                         resultStr += ` (90m:${ptsObj.pts90}, AET:${ptsObj.ptsAET}, PEN:${ptsObj.ptsPEN})`;
                     }
                     
