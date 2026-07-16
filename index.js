@@ -517,7 +517,7 @@ XX: ไม่มีคนทำประตูเลยใน 120 นาที (
     // --- 2. /guess ---
     if (text.startsWith('/guess')) {
       const tokens = text.split(/\s+/);
-      if (tokens.length < 4 || tokens.length > 6) {
+      if (tokens.length < 4 || tokens.length > 7) {
         await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบผิดครับ\nตัวอย่าง: /guess 9001 2-1 W\nหรือถ้ามีต่อเวลา (แมตช์ 103,104 ให้ใส่รหัสคนยิงด้วย): /guess 104 2-1 W W W S1`}] });
         continue;
       }
