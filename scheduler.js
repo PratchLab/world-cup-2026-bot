@@ -116,13 +116,7 @@ function startScheduler(client, sheetsFunctions) {
             const homePEN = (apiFixture.score && apiFixture.score.penalty && apiFixture.score.penalty.home !== null) ? apiFixture.score.penalty.home : null;
             const awayPEN = (apiFixture.score && apiFixture.score.penalty && apiFixture.score.penalty.away !== null) ? apiFixture.score.penalty.away : null;
 
-            // 1. Update Sheet
-            await updateMatchResult(match.matchId, 'FT', homeScore, awayScore, homeAET, awayAET, homePEN, awayPEN);
-            await getAllMatchesFromSheet();
-            
-            if (groupIds.length === 0) continue;
-
-            // 2. Fetch Events & Stats safely
+            // 1. Fetch Events & Stats safely FIRST so we can map scorers
             let events = [];
             let stats = [];
             try {
@@ -132,13 +126,68 @@ function startScheduler(client, sheetsFunctions) {
                 console.error(`Error fetching post-match data for ${match.matchId}:`, err);
             }
             
+            // Goals mapping
+            const GOALSCORER_MAPPING = {
+              'Mbappé': 'F1', 'Mbappe': 'F1',
+              'Dembélé': 'F2', 'Dembele': 'F2',
+              'Barcola': 'F3',
+              'Thuram': 'F4',
+              'Olise': 'F5',
+              'Kane': 'E1',
+              'Bellingham': 'E2',
+              'Saka': 'E3',
+              'Rashford': 'E4',
+              'Toney': 'E5',
+              
+              'Oyarzabal': 'S1',
+              'Lamine Yamal': 'S2', 'Yamal': 'S2',
+              'Williams': 'S3',
+              'Olmo': 'S4',
+              'Merino': 'S5', // Changed from Torres to Merino based on /next update
+              'Messi': 'A1',
+              'Martinez': 'A2', 'Martínez': 'A2',
+              'Alvarez': 'A3', 'Álvarez': 'A3',
+              'Fernandez': 'A4', 'Fernández': 'A4',
+              'Mac Allister': 'A5'
+            };
+            
+            const actualScorersSet = new Set();
+            if (Array.isArray(events)) {
+                const goalEvents = events.filter(e => e.type === 'Goal' && e.comments !== 'Penalty Shootout' && e.detail !== 'Missed Penalty' && e.detail !== 'Own Goal');
+                
+                goalEvents.forEach(e => {
+                    const playerName = e.player?.name || '';
+                    let foundCode = null;
+                    for (const [key, code] of Object.entries(GOALSCORER_MAPPING)) {
+                        if (playerName.includes(key)) {
+                            foundCode = code;
+                            break;
+                        }
+                    }
+                    if (!foundCode) {
+                        if (e.team?.name === 'France' || e.team?.name === 'England') foundCode = 'FE';
+                        else if (e.team?.name === 'Spain' || e.team?.name === 'Argentina') foundCode = 'SA';
+                    }
+                    if (foundCode) actualScorersSet.add(foundCode);
+                });
+                
+                if (goalEvents.length === 0) actualScorersSet.add('XX'); // No goals
+            }
+            const actualScorers = Array.from(actualScorersSet);
+
+            // 2. Update Sheet
+            await updateMatchResult(match.matchId, 'FT', homeScore, awayScore, homeAET, awayAET, homePEN, awayPEN, actualScorers);
+            await getAllMatchesFromSheet();
+            
+            if (groupIds.length === 0) continue;
+
             let replyText = `🏁 จบการแข่งขัน! 🏁\n${getFlag(match.homeTeam)} ${match.homeTeam} ${homeScore} - ${awayScore} ${match.awayTeam} ${getFlag(match.awayTeam)} (ในเวลา 90 นาที)\n`;
             if (homeAET !== null && awayAET !== null) {
                 replyText += `(ต่อเวลาพิเศษ AET: ${homeAET} - ${awayAET})\n`;
             }
             replyText += `\n`;
             
-            // Goals and Shootouts
+            // Goals and Shootouts text
             if (Array.isArray(events)) {
                 const goalEvents = events.filter(e => e.type === 'Goal' && e.comments !== 'Penalty Shootout' && e.detail !== 'Missed Penalty');
                 const shootoutEvents = events.filter(e => e.type === 'Goal' && e.comments === 'Penalty Shootout');

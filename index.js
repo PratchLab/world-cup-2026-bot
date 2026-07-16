@@ -58,7 +58,7 @@ async function getSheetsClient() {
 async function getAllMatchesFromSheet() {
   const sheets = await getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A2:M' });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A2:N' });
   const rows = res.data.values || [];
   
   const matches = rows.map(r => ({
@@ -74,7 +74,8 @@ async function getAllMatchesFromSheet() {
     homeScoreAET: (r[9] && r[9] !== '') ? parseInt(r[9]) : null,
     awayScoreAET: (r[10] && r[10] !== '') ? parseInt(r[10]) : null,
     homeScorePEN: (r[11] && r[11] !== '') ? parseInt(r[11]) : null,
-    awayScorePEN: (r[12] && r[12] !== '') ? parseInt(r[12]) : null
+    awayScorePEN: (r[12] && r[12] !== '') ? parseInt(r[12]) : null,
+    actualScorers: (r[13] && r[13] !== '') ? r[13].split(',') : []
   }));
   
   allFixturesCache = matches;
@@ -121,19 +122,19 @@ async function getLatestPredictions() {
   const map = {};
   for (const row of rows) {
     if (row.length < 7) continue;
-    const [ts, groupId, userId, displayName, matchId, prediction, outcome, predAET = '', predPEN = ''] = row;
+    const [ts, groupId, userId, displayName, matchId, prediction, outcome, predAET = '', predPEN = '', predScorer = ''] = row;
     const key = `${groupId}_${userId}_${matchId}`;
     if (!map[key] || new Date(ts) > new Date(map[key].ts)) {
-      map[key] = { ts, groupId, userId, displayName, matchId, prediction, outcome, predAET, predPEN };
+      map[key] = { ts, groupId, userId, displayName, matchId, prediction, outcome, predAET, predPEN, predScorer };
     }
   }
   return Object.values(map);
 }
 
 // Calculate points
-function calculatePoints(predScore, predOutcome, actualHome, actualAway, matchInfo = null, predAET = '', predPEN = '') {
+function calculatePoints(predScore, predOutcome, actualHome, actualAway, matchInfo = null, predAET = '', predPEN = '', predScorer = '') {
   if (actualHome === null || actualAway === null || actualHome === undefined) {
-      return { total: 0, pts90: 0, ptsAET: 0, ptsPEN: 0 };
+      return { total: 0, pts90: 0, ptsAET: 0, ptsPEN: 0, ptsScorer: 0 };
   }
   const actualScoreStr = `${actualHome}-${actualAway}`;
   const actualOutcome = actualHome > actualAway ? 'W' : actualHome === actualAway ? 'D' : 'L';
@@ -164,12 +165,20 @@ function calculatePoints(predScore, predOutcome, actualHome, actualAway, matchIn
       const actPENOutcome = matchInfo.homeScorePEN > matchInfo.awayScorePEN ? 'W' : matchInfo.homeScorePEN === matchInfo.awayScorePEN ? 'D' : 'L';
       if (predPEN === actPENOutcome) ptsPEN += 1 * multiplier;
   }
+
+  let ptsScorer = 0;
+  if (matchInfo && Array.isArray(matchInfo.actualScorers) && predScorer) {
+      if (matchInfo.actualScorers.includes(predScorer)) {
+          ptsScorer = 3; // Fixed +3 points for correct goalscorer
+      }
+  }
   
   return {
-      total: pts90 + ptsAET + ptsPEN,
+      total: pts90 + ptsAET + ptsPEN + ptsScorer,
       pts90,
       ptsAET,
-      ptsPEN
+      ptsPEN,
+      ptsScorer
   };
 }
 
@@ -186,16 +195,16 @@ async function storeMatchesToSheet(matches) {
 }
 
 // Helper: write prediction to sheet
-async function storePrediction(groupId, userId, displayName, matchId, prediction, outcome, predAET = '', predPEN = '') {
+async function storePrediction(groupId, userId, displayName, matchId, prediction, outcome, predAET = '', predPEN = '', predScorer = '') {
   const sheets = await getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   await sheets.spreadsheets.values.append({
-    spreadsheetId, range: 'Predictions!A:I', valueInputOption: 'RAW',
-    requestBody: { values: [[new Date().toISOString(), groupId, userId, displayName, matchId, prediction, outcome, predAET, predPEN]] },
+    spreadsheetId, range: 'Predictions!A:J', valueInputOption: 'RAW',
+    requestBody: { values: [[new Date().toISOString(), groupId, userId, displayName, matchId, prediction, outcome, predAET, predPEN, predScorer]] },
   });
 }
 
-async function updateMatchResult(matchId, status, homeScore, awayScore, homeAET = null, awayAET = null, homePEN = null, awayPEN = null) {
+async function updateMatchResult(matchId, status, homeScore, awayScore, homeAET = null, awayAET = null, homePEN = null, awayPEN = null, actualScorers = []) {
   const sheets = await getSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Matches!A:I' });
@@ -206,8 +215,10 @@ async function updateMatchResult(matchId, status, homeScore, awayScore, homeAET 
   
   const apiFixtureId = rows[rowIndex][8] || '';
   const rowNumber = rowIndex + 1; // +1 for 1-based index (header is row 1)
-  const range = `Matches!F${rowNumber}:M${rowNumber}`;
+  const range = `Matches!F${rowNumber}:N${rowNumber}`;
   
+  const scorersStr = Array.isArray(actualScorers) ? actualScorers.join(',') : '';
+
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range,
@@ -221,7 +232,8 @@ async function updateMatchResult(matchId, status, homeScore, awayScore, homeAET 
         homeAET !== null ? homeAET : '', 
         awayAET !== null ? awayAET : '', 
         homePEN !== null ? homePEN : '', 
-        awayPEN !== null ? awayPEN : ''
+        awayPEN !== null ? awayPEN : '',
+        scorersStr
       ]]
     }
   });
@@ -232,7 +244,7 @@ async function updateMatchResult(matchId, status, homeScore, awayScore, homeAET 
 
 function parsePrediction(text) {
   const parts = text.trim().split(/\s+/);
-  if (parts.length < 2 || parts.length > 4) return null;
+  if (parts.length < 2 || parts.length > 5) return null;
   const score = parts[0].split('-');
   if (score.length !== 2) return null;
   const home = parseInt(score[0], 10);
@@ -242,16 +254,28 @@ function parsePrediction(text) {
   
   let outcomeAET = '';
   let outcomePEN = '';
+  let scorer = '';
   if (parts.length >= 3) {
       outcomeAET = parts[2].toUpperCase();
       if (!['W','D','L'].includes(outcomeAET)) return null;
   }
-  if (parts.length === 4) {
+  if (parts.length >= 4) {
       outcomePEN = parts[3].toUpperCase();
-      if (!['W','L'].includes(outcomePEN)) return null; // PEN cannot be Draw
+      if (!['W','D','L'].includes(outcomePEN)) return null;
+  }
+  if (parts.length === 5) {
+      scorer = parts[4].toUpperCase();
   }
   
-  return {home, away, outcome, outcomeAET, outcomePEN};
+  return {
+    home,
+    away,
+    scoreStr: parts[0],
+    outcome,
+    outcomeAET,
+    outcomePEN,
+    scorer
+  };
 }
 
 // HELP MESSAGE
@@ -435,7 +459,54 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           continue;
         }
         const flexMessage = generateMatchesCarousel(upcomingMatches);
-        const guideText = { type: 'text', text: '👆 กดปุ่ม "คัดลอกคำสั่งทายผล" ใต้คู่ที่อยากทาย แล้วเอามาวางในช่องแชท\nจากนั้นพิมพ์สกอร์กับผล (W/D/L) ต่อท้ายแล้วกดส่งได้เลยครับ!\n\nตัวอย่าง: /guess 9001 2-1 W' };
+        let baseGuideText = '👆 กดปุ่ม "คัดลอกคำสั่งทายผล" ใต้คู่ที่อยากทาย แล้วเอามาวางในช่องแชท\nจากนั้นพิมพ์สกอร์กับผล (W/D/L) ต่อท้ายแล้วกดส่งได้เลยครับ!\n\nตัวอย่าง: /guess 9001 2-1 W';
+        const hasFinals = upcomingMatches.some(m => m.matchId === '103' || m.matchId === '104');
+        if (hasFinals) {
+            baseGuideText = `🚨 กติกาพิเศษรอบชิง (Match 103, 104) 🚨
+สามารถทาย "ผู้ทำประตู (ใครก็ได้ในเกม)" เพิ่มเติมได้! ทายถูกรับเพิ่ม +3 แต้ม (รวมสูงสุด 13 แต้ม/นัด)
+*กติกาคนทำประตู: นับรวมเฉพาะเวลา 90 นาที และต่อเวลาพิเศษ (AET) เท่านั้น ไม่นับช่วงดวลจุดโทษ และไม่นับการทำเข้าประตูตัวเอง (Own Goal)
+
+พิมพ์รหัสผู้ทำประตูต่อท้ายผลจุดโทษ (รวมเป็น 5 ค่า) เช่น:
+👉 /guess 104 2-1 W W W S1
+
+[Match 103: France vs England]
+🇫🇷 กลุ่ม F (ทีมชาติฝรั่งเศส) — ตกรอบรองชนะเลิศ / ไปชิงอันดับ 3
+F1: Kylian Mbappé (8 ประตู) — กัปตันทีมร่างทอง นำดาวซัลโวร่วมที่ 8 ประตูและมี 3 แอสซิสต์ เป็นอาวุธหนักที่สุดในแนวรุกของทัพตราไก่
+F2: Ousmane Dembélé (5 ประตู) — ปีกจอมเลื้อยความสามารถเฉพาะตัวสูง ทำผลงานสม่ำเสมอคอยป้อนและหาจังหวะยิงเองสะสมไป 5 ประตู
+F3: Bradley Barcola (2 ประตู) — ตัวรุกดาวรุ่งสายสปีดจัดจ้าน ส่วนใหญ่ลงมาป่วนในฐานะตัวสำรองครึ่งหลัง ยิงไปแล้ว 2 ประตูในทัวร์นาเมนต์
+F4: M. Thuram (0 ประตู) — กองหน้าร่างยักษ์สายชน ใช้ร่างกายค้ำกองหลังเพื่อเปิดทางให้เพื่อนร่วมทีม แม้จะยังไม่มีชื่อทำประตูเอง
+F5: Michael Olise (0 ประตู) — มิดฟิลด์ตัวรุกเชิงสูง เล่นได้อย่างโดดเด่นและรั้งตำแหน่ง จอมแอสซิสต์สูงสุดของทัวร์นาเมนต์ที่ 5 ครั้ง
+
+🏴󠁧󠁢󠁥󠁮󠁧󠁿 กลุ่ม E (ทีมชาติอังกฤษ) — ตกรอบรองชนะเลิศ / ไปชิงอันดับ 3
+E1: Harry Kane (6 ประตู) — ดาวยิงกัปตันทีม ยิงสะสมไป 6 ประตู คอยลงมาเชื่อมเกมต่ำและพึ่งพาได้เสมอในจังหวะสังหารสกอร์
+E2: Jude Bellingham (6 ประตู) — กองกลางพลังขับเคลื่อน แบกเกมรุกอังกฤษเต็มตัว ยิงประตูสำคัญในรอบลึก ๆ จนยอดขยับมาเท่ากัปตันที่ 6 ประตู
+E3: Bukayo Saka (0 ประตู) — ตัวรุกริมเส้นฝั่งขวาตัวหลัก โดดเด่นเรื่องการกระชากลากเลื้อยทำทางทำไปแล้ว 3 แอสซิสต์ แต่ยังไม่มีประตู
+E4: Marcus Rashford (1 ประตู) — แนวรุกกึ่งปีก ใช้ความสดและความเร็วโจมตีคู่แข่งช่วงท้ายเกมในฐานะตัวสำรอง ยิงไปได้ 1 ประตู
+E5: Ivan Toney (0 ประตู) — กองหน้าสายปะทะ ได้โอกาสลงสนามจำกัดช่วงท้ายเกมยามทีมต้องการบอมบ์ยาว จึงยังไม่มีชื่อทำประตู
+
+FE: ผู้เล่นฝรั่งเศสหรืออังกฤษคนอื่นๆ
+XX: ไม่มีคนทำประตูเลยใน 120 นาที (0-0)
+
+[Match 104: Spain vs Argentina]
+🇪🇸 กลุ่ม S (ทีมชาติสเปน) — เข้าสู่รอบชิงชนะเลิศ
+S1: Mikel Oyarzabal (5 ประตู) — กองหน้าฟอร์มฮอต นำดาวซัลโวของทีม ล่าสุดเพิ่งซัด 1 จุดโทษตอกฝาโลงนัดชนะฝรั่งเศส 2-0 ในรอบตัดเชือก
+S2: Lamine Yamal (1 ประตู) — วันเดอร์คิดวัย 18 ปี ป่วนริมเส้นฝั่งขวาได้อย่างทรงพลัง สร้างโอกาสให้ทีมมหาศาลตลอดทัวร์นาเมนต์
+S3: Nico Williams (0 ประตู) — ปีกความเร็วสูง โชคร้ายเจ็บต้นขาและขาหนีบในรอบแบ่งกลุ่ม แต่ตอนนี้หายสนิทแล้ว รอเป็นไพ่ตายในนัดชิง
+S4: Dani Olmo (0 ประตู) — เพลย์เมกเกอร์ตัวสร้างสรรค์ คอยคุมจังหวะและจ่ายบอลคิลเลอร์พาสตรงกลางสนาม
+S5: Mikel Merino (2 ประตู) — กองกลางจอมนาทีบาป ทำหน้าที่เป็นซูเปอร์ซับฮีโร่ ยิงประตูชัยท้ายเกมพาทีมเฉือนโปรตุเกสและเบลเยียมในรอบน็อคเอาท์
+
+🇦🇷 กลุ่ม A (ทีมชาติอาร์เจนตินา) — เข้าสู่รอบชิงชนะเลิศ
+A1: Lionel Messi (8 ประตู) — ตำนานวัย 39 ปี นำดาวซัลโวร่วมที่ 8 ประตู พ่วงอีก 4 แอสซิสต์ แบกเกมรุกอาร์เจนตินาลุ้นแชมป์โลกสมัยที่สองติดต่อกัน
+A2: Lautaro Martinez (2 ประตู) — ดาวยิงสายดุดัน จบสกอร์เฉียบคม ยิงเซฟทีมสำคัญสะสมไปแล้ว 2 ประตูในบอลโลกครั้งนี้
+A3: Julian Alvarez (0 ประตู) — กองหน้าพลังม้า วิ่งเพรสซิ่งไล่บอลแดนบนอย่างขยันขันแข็งเพื่อเปิดพื้นที่ให้เมสซี่เล่นง่ายขึ้น
+A4: Enzo Fernandez (1 ประตู) — กองกลางจอมทัพ ยิงประตูตีเสมอสุดสำคัญ 1-1 ในนาทีที่ 85 นัดพลิกแซงชนะอังกฤษ 2-1 ในรอบรองชนะเลิศ
+A5: Alexis Mac Allister (0 ประตู) — มิดฟิลด์สมองเพชร คอยคุมจังหวะสลับรุก-รับในแดนกลางอย่างสมดุล เน้นทำงานปิดทองหลังพระ
+
+SA: ผู้เล่นสเปนหรืออาร์เจนตินาคนอื่นๆ
+XX: ไม่มีคนทำประตูเลยใน 120 นาที (0-0)`;
+        }
+        
+        const guideText = { type: 'text', text: baseGuideText };
         await client.replyMessage({ replyToken: event.replyToken, messages: [flexMessage, guideText] });
       } catch (err) {
         console.error('Error fetching matches:', err);
@@ -447,13 +518,13 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
     if (text.startsWith('/guess')) {
       const tokens = text.split(/\s+/);
       if (tokens.length < 4 || tokens.length > 6) {
-        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบผิดครับ\nตัวอย่าง: /guess 9001 2-1 W\nหรือถ้ามีต่อเวลา: /guess 9001 1-1 D D W`}] });
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบผิดครับ\nตัวอย่าง: /guess 9001 2-1 W\nหรือถ้ามีต่อเวลา (แมตช์ 103,104 ให้ใส่รหัสคนยิงด้วย): /guess 104 2-1 W W W S1`}] });
         continue;
       }
       const matchId = tokens[1];
       const pred = parsePrediction(tokens.slice(2).join(' '));
       if (!pred) {
-        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบสกอร์หรือผลผิดครับ (W=เจ้าบ้านชนะ, D=เสมอ, L=เยือนชนะ)\nจุดโทษห้ามทายเสมอ (D)\nตัวอย่าง: /guess 9001 1-1 D D W`}] });
+        await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: `⚠️ รูปแบบสกอร์หรือผลผิดครับ (W=เจ้าบ้านชนะ, D=เสมอ, L=เยือนชนะ)\nจุดโทษห้ามทายเสมอ (D)\nตัวอย่าง (นัดชิงใส่คนยิงด้วย): /guess 104 1-1 D D W S1`}] });
         continue;
       }
 
@@ -487,7 +558,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         } catch (e) {
           console.error("Profile fetch error:", e.message);
         }
-        await storePrediction(groupId, userId, displayName, matchId, `${pred.home}-${pred.away}`, pred.outcome, pred.outcomeAET, pred.outcomePEN);
+        await storePrediction(groupId, userId, displayName, matchId, `${pred.home}-${pred.away}`, pred.outcome, pred.outcomeAET, pred.outcomePEN, pred.scorer);
         
         const hFlag = getFlag(matchInfo.homeTeam);
         const aFlag = getFlag(matchInfo.awayTeam);
@@ -496,6 +567,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         let replyText = `✅ บันทึกทายผลสำเร็จ!\n\n${hFlag} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${aFlag}\nสกอร์ที่ทาย: ${pred.home} - ${pred.away}\nฟันธง: ${teamOutcome}`;
         if (pred.outcomeAET) replyText += `\nต่อเวลา AET: ${pred.outcomeAET === 'W' ? matchInfo.homeTeam + ' ชนะ' : pred.outcomeAET === 'L' ? matchInfo.awayTeam + ' ชนะ' : 'เสมอ'}`;
         if (pred.outcomePEN) replyText += `\nจุดโทษ PEN: ${pred.outcomePEN === 'W' ? matchInfo.homeTeam + ' ชนะ' : matchInfo.awayTeam + ' ชนะ'}`;
+        if (pred.scorer) replyText += `\nคนทำประตู: รหัส ${pred.scorer}`;
         replyText += `\n\n⚠️ คุณสามารถทายแก้ตัวได้เรื่อยๆ จนกว่าบอลจะเตะนะครับ! (เรานับเฉพาะครั้งล่าสุด)\nขอให้โชคดีนะ ${displayName}! 🔴⚪`;
         
         await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: replyText}] });
@@ -532,7 +604,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
         chunk += `ทายว่า: ${guessStr}\n`;
         
         if (matchInfo.status === 'FT') {
-          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN, p.predScorer);
           const pts = ptsObj.total;
           totalPts += pts;
           
@@ -541,8 +613,12 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           if (matchInfo.homeScorePEN !== null) actStr += ` (PEN ${matchInfo.homeScorePEN}-${matchInfo.awayScorePEN})`;
           
           chunk += `[จบเกม: ${actStr}] 👉 ได้ ${pts} แต้ม!`;
-          if (matchInfo.homeScoreAET !== null || matchInfo.homeScorePEN !== null) {
-              chunk += ` (90m: ${ptsObj.pts90}, AET: ${ptsObj.ptsAET}, PEN: ${ptsObj.ptsPEN})`;
+          if (matchInfo.homeScoreAET !== null || matchInfo.homeScorePEN !== null || ptsObj.ptsScorer > 0) {
+              chunk += ` (90m: ${ptsObj.pts90}`;
+              if (matchInfo.homeScoreAET !== null) chunk += `, AET: ${ptsObj.ptsAET}`;
+              if (matchInfo.homeScorePEN !== null) chunk += `, PEN: ${ptsObj.ptsPEN}`;
+              if (ptsObj.ptsScorer > 0) chunk += `, Scorer: ${ptsObj.ptsScorer}`;
+              chunk += `)`;
           }
           chunk += `\n\n`;
         } else {
@@ -608,7 +684,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           if (p.predAET) guessStr += ` AET:${p.predAET}`;
           if (p.predPEN) guessStr += ` PEN:${p.predPEN}`;
           if (matchInfo.status === 'FT') {
-             const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+             const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN, p.predScorer);
              pointsText = ` 👉 ได้ ${ptsObj.total} แต้ม!`;
              if (matchInfo.homeScoreAET !== null || matchInfo.homeScorePEN !== null) {
                  pointsText += ` (90m:${ptsObj.pts90}, AET:${ptsObj.ptsAET}, PEN:${ptsObj.ptsPEN})`;
@@ -640,7 +716,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           if (isRank32 && mId < 73) return; // Skip matches before Round of 32
           if (isRank16 && mId < 89) return; // Skip matches before Round of 16
 
-          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN, p.predScorer);
           const pts = ptsObj.total;
           if (!scores[p.userId]) scores[p.userId] = { displayName: p.displayName, points: 0 };
           scores[p.userId].points += pts;
@@ -704,7 +780,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           matchPreds.forEach(p => {
               if (!cumulativeScores[p.userId]) cumulativeScores[p.userId] = { displayName: p.displayName, points: 0 };
               
-              const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+              const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN, p.predScorer);
               const pts = ptsObj.total;
               cumulativeScores[p.userId].points += pts;
               
@@ -763,7 +839,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
           if (!matchStats[mId]) {
              matchStats[mId] = { matchInfo, total: 0, zero: 0, three: 0, predictors: [] };
           }
-          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN, p.predScorer);
           const pts = ptsObj.total;
           matchStats[mId].total++;
           if (pts === 0) matchStats[mId].zero++;
@@ -1067,7 +1143,7 @@ app.get('/api/group/:groupId/rank', async (req, res) => {
       
       let pts = 0;
       if (matchInfo && matchInfo.status === 'FT') {
-        const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN);
+        const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN, p.predScorer);
         pts = ptsObj.total;
         scores[p.userId].points += pts;
         if (pts >= 3) scores[p.userId].w++;
@@ -1157,7 +1233,7 @@ app.get('/api/group/:groupId/match/:matchId/details', async (req, res) => {
       .map(p => {
         let pts = null;
         if (match && match.status === 'FT') {
-          const ptsObj = calculatePoints(p.prediction, p.outcome, match.homeScore, match.awayScore, match, p.predAET, p.predPEN);
+          const ptsObj = calculatePoints(p.prediction, p.outcome, match.homeScore, match.awayScore, match, p.predAET, p.predPEN, p.predScorer);
           pts = ptsObj.total;
         }
         return { displayName: p.displayName, prediction: p.prediction, outcome: p.outcome, predAET: p.predAET, predPEN: p.predPEN, points: pts };
