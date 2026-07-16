@@ -567,7 +567,19 @@ XX: ไม่มีคนทำประตูเลยใน 120 นาที (
         let replyText = `✅ บันทึกทายผลสำเร็จ!\n\n${hFlag} ${matchInfo.homeTeam} vs ${matchInfo.awayTeam} ${aFlag}\nสกอร์ที่ทาย: ${pred.home} - ${pred.away}\nฟันธง: ${teamOutcome}`;
         if (pred.outcomeAET) replyText += `\nต่อเวลา AET: ${pred.outcomeAET === 'W' ? matchInfo.homeTeam + ' ชนะ' : pred.outcomeAET === 'L' ? matchInfo.awayTeam + ' ชนะ' : 'เสมอ'}`;
         if (pred.outcomePEN) replyText += `\nจุดโทษ PEN: ${pred.outcomePEN === 'W' ? matchInfo.homeTeam + ' ชนะ' : matchInfo.awayTeam + ' ชนะ'}`;
-        if (pred.scorer) replyText += `\nคนทำประตู: รหัส ${pred.scorer}`;
+        const CODE_TO_NAME = {
+          'F1': 'Kylian Mbappé', 'F2': 'O. Dembélé', 'F3': 'B. Barcola', 'F4': 'M. Thuram', 'F5': 'M. Olise',
+          'E1': 'H. Kane', 'E2': 'J. Bellingham', 'E3': 'B. Saka', 'E4': 'M. Rashford', 'E5': 'I. Toney',
+          'FE': 'ผู้เล่นอื่นๆ (ฝรั่งเศส/อังกฤษ)',
+          'S1': 'M. Oyarzabal', 'S2': 'Lamine Yamal', 'S3': 'Nico Williams', 'S4': 'Dani Olmo', 'S5': 'Mikel Merino',
+          'A1': 'L. Messi', 'A2': 'Lautaro Martinez', 'A3': 'Julian Alvarez', 'A4': 'Enzo Fernandez', 'A5': 'A. Mac Allister',
+          'SA': 'ผู้เล่นอื่นๆ (สเปน/อาร์เจนตินา)',
+          'XX': 'ไม่มีคนทำประตู'
+        };
+        if (pred.scorer) {
+           const playerName = CODE_TO_NAME[pred.scorer.toUpperCase()] || 'ไม่ทราบชื่อ';
+           replyText += `\nคนทำประตู: รหัส ${pred.scorer} (${playerName})`;
+        }
         replyText += `\n\n⚠️ คุณสามารถทายแก้ตัวได้เรื่อยๆ จนกว่าบอลจะเตะนะครับ! (เรานับเฉพาะครั้งล่าสุด)\nขอให้โชคดีนะ ${displayName}! 🔴⚪`;
         
         await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: replyText}] });
