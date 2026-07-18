@@ -112,7 +112,7 @@ async function getLatestPredictions() {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   let rows = [];
   try {
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Predictions!A:I' });
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Predictions!A:J' });
     rows = res.data.values || [];
   } catch (e) {
     console.error('Error reading predictions sheet', e);
