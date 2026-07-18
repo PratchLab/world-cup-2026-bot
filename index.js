@@ -695,11 +695,28 @@ XX: ไม่มีคนทำประตูเลยใน 120 นาที (
           let guessStr = `${p.prediction} (${p.outcome})`;
           if (p.predAET) guessStr += ` AET:${p.predAET}`;
           if (p.predPEN) guessStr += ` PEN:${p.predPEN}`;
+          if (p.predScorer) {
+             const CODE_TO_NAME = {
+               'F1': 'Kylian Mbappé', 'F2': 'O. Dembélé', 'F3': 'B. Barcola', 'F4': 'M. Thuram', 'F5': 'M. Olise',
+               'E1': 'H. Kane', 'E2': 'J. Bellingham', 'E3': 'B. Saka', 'E4': 'M. Rashford', 'E5': 'I. Toney',
+               'FE': 'ผู้เล่นอื่นๆ (ฝรั่งเศส/อังกฤษ)',
+               'S1': 'M. Oyarzabal', 'S2': 'Lamine Yamal', 'S3': 'Nico Williams', 'S4': 'Dani Olmo', 'S5': 'Mikel Merino',
+               'A1': 'L. Messi', 'A2': 'Lautaro Martinez', 'A3': 'Julian Alvarez', 'A4': 'Enzo Fernandez', 'A5': 'A. Mac Allister',
+               'SA': 'ผู้เล่นอื่นๆ (สเปน/อาร์เจนตินา)',
+               'XX': 'ไม่มีคนทำประตู'
+             };
+             const playerName = CODE_TO_NAME[p.predScorer.toUpperCase()] || 'ไม่ทราบชื่อ';
+             guessStr += ` ⚽ ${p.predScorer} (${playerName})`;
+          }
           if (matchInfo.status === 'FT') {
              const ptsObj = calculatePoints(p.prediction, p.outcome, matchInfo.homeScore, matchInfo.awayScore, matchInfo, p.predAET, p.predPEN, p.predScorer);
              pointsText = ` 👉 ได้ ${ptsObj.total} แต้ม!`;
-             if (matchInfo.homeScoreAET !== null || matchInfo.homeScorePEN !== null) {
-                 pointsText += ` (90m:${ptsObj.pts90}, AET:${ptsObj.ptsAET}, PEN:${ptsObj.ptsPEN})`;
+             if (matchInfo.homeScoreAET !== null || matchInfo.homeScorePEN !== null || ptsObj.ptsScorer > 0) {
+                 pointsText += ` (90m:${ptsObj.pts90}`;
+                 if (matchInfo.homeScoreAET !== null) pointsText += `, AET:${ptsObj.ptsAET}`;
+                 if (matchInfo.homeScorePEN !== null) pointsText += `, PEN:${ptsObj.ptsPEN}`;
+                 if (ptsObj.ptsScorer > 0) pointsText += `, Scorer:${ptsObj.ptsScorer}`;
+                 pointsText += `)`;
              }
           }
           replyText += `👤 ${p.displayName} ทายว่า: ${guessStr}${pointsText}\n`;
