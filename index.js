@@ -1102,6 +1102,24 @@ XX: ไม่มีคนทำประตูเลยใน 120 นาที (
        continue;
     }
     
+    // --- 9. /bye or /leave ---
+    if (text === '/bye' || text === '/leave') {
+      const groupId = event.source.groupId;
+      const roomId = event.source.roomId;
+      
+      await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: 'ขอบคุณทุกคนที่ร่วมสนุกทายผลฟุตบอลโลก 2026 ด้วยกันนะครับ! บ๊ายบายครับ 👋'}] });
+      
+      try {
+         if (groupId) {
+            await client.leaveGroup(groupId);
+         } else if (roomId) {
+            await client.leaveRoom(roomId);
+         }
+      } catch (e) {
+         console.error('Error leaving group/room:', e);
+      }
+      continue;
+    }
     // --- Fallback Help ---
     await client.replyMessage({ replyToken: event.replyToken, messages: [{type: 'text', text: helpMsg}] });
   }

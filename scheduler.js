@@ -292,7 +292,7 @@ function startScheduler(client, sheetsFunctions) {
     }
   });
   // 3. Daily News Summary (08:00 and 18:00 Thailand time -> 01:00 and 11:00 UTC)
-  cron.schedule('0 1,11 * * *', async () => {
+  /* cron.schedule('0 1,11 * * *', async () => {
     const groupIds = await getActiveGroupIds();
     if (groupIds.length === 0) return;
 
@@ -324,7 +324,7 @@ function startScheduler(client, sheetsFunctions) {
     } catch (e) {
       console.error("[Scheduler] Error pushing news summary:", e.message);
     }
-  });
+  }); */
 
   console.log('[Scheduler] Cron jobs started.');
 }
